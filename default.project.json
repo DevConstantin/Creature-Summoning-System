@@ -1,0 +1,13 @@
+{
+  "name": "Creature Summoning System",
+  "tree": {
+    "$className": "DataModel",
+    "$ignoreUnknownInstances": true,
+
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "$ignoreUnknownInstances": true,
+      "$path": "src/ServerScriptService"
+    }
+  }
+}
