@@ -83,7 +83,9 @@ local function spawnNPC(model, spawnCFrame: CFrame, useFF: boolean)
 	model.Parent = summonedCreatures
 end
 
-function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceField: boolean)
+-- Main spawn function for an NPC
+-- @param isClassSummon: Optional, if the creature is being summoned durring a COMC class, it will not attack the COMC instructor
+function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceField: boolean?, isClassSummon: boolean?)
 	if typeof(spawnLocation) == Vector3 then
 		spawnLocation = CFrame.new(spawnLocation)
 	end
@@ -99,6 +101,7 @@ function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceFi
 	self.humanoid = humanoid
 	self.rootPart = model:WaitForChild("HumanoidRootPart")
 	self.creatureName = creatureName
+	self.despawning = false
 
 	-- Initialize creature stats
 	local stats = creatureStats[creatureName] or creatureStats["Default"]
@@ -112,6 +115,7 @@ function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceFi
 	self.moveToNearby = stats.moveToNearby or false
 	self.damagePart = model:FindFirstChild("DamagePart") -- The part that will be used to check for players to damage
 	self.trackTarget = nil
+	self.isClassSummon = isClassSummon or false
 
 	-- Tables
 	self.connections = {}
@@ -149,7 +153,7 @@ function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceFi
 
 	spawnNPC(model, spawnLocation, useForceField)
 	self:emitSparkles()
-	
+
 	-- Run aggression functionality
 	-- Currently DISABLED, as this is not optimized
 	-- if  then
@@ -196,7 +200,7 @@ end
 
 -- Method to get NPC's current position
 -- @return: NPC's current position
-function NPC:getPosition()
+function NPC:getPosition(): Vector3?
 	return self.rootPart and self.rootPart.Position
 end
 
@@ -219,7 +223,7 @@ function NPC:updateSpeed(targetSpeed: number)
 end
 
 -- Handle fly movement (uses AlignPosition & AlignOrientation)
-local function flyMove(npcModel, currentPos, targetPos)
+local function flyMove(npcModel: Model, currentPos: Vector3, targetPos: Vector3)
 	local flightPosPart = npcModel:FindFirstChild("AlignPosPart") or Utilities.setupFlight(npcModel)
 	flightPosPart.CFrame = CFrame.lookAlong(targetPos, (targetPos - currentPos).Unit)
 end
@@ -238,7 +242,11 @@ end
 -- Method to move the NPC to a position
 -- @param area: zone value
 -- @return: Estimated time to reach the destination
-function NPC:moveTo(pos: Vector3): number
+function NPC:moveToPoint(pos: Vector3): number
+	if self.despawning then
+		return
+	end
+
 	if not pos then
 		warn("Missing pos value for moveTo function.")
 		return
@@ -281,26 +289,30 @@ function NPC:moveToNearbyTarget(aggroOrigin: Vector3, zoneArea: Zone)
 		Utilities.getClosest(currentPos, players, self.attackRange, aggroOrigin)
 	if closestTargetPos then
 		--print("Moving to closest player position of", closestTargetPos)
-		self:moveTo(closestTargetPos)
+		self:moveToPoint(closestTargetPos)
 	end
 end
 
 -- Method to move NPC to a random position within zone / series of nodes. Must input either a roamZone or a table of nodes (parts)
 -- @param area: zone class to grab a random position
 -- @param nodeTable: list of node parts to move to
-function NPC:roam(roamZone: Zone, nodeTable: table?)
+function NPC:roam(roamArea: Folder | Zone): number?
+	if self.despawning then
+		return
+	end
+
 	local targetPos = nil
-	if roamZone then
-		targetPos = roamZone:getRandomPoint()
-		-- get random position within the zone
-	elseif nodeTable then
-		targetPos = nodeTable[math.random(#nodeTable)].Position
+	if typeof(roamArea) == "Instance" and roamArea:IsA("Folder") then
+		local roamNodes = roamArea:GetChildren()
+		targetPos = roamNodes[math.random(1, #roamNodes)].Position
+	elseif roamArea ~= nil then
+		targetPos = roamArea:getRandomPoint()
 	else
 		warn("You must provide either a roam zone object or table of nodes for NPC:roam function!")
 		return
 	end
 
-	local t = self:moveTo(targetPos)
+	local t = self:moveToPoint(targetPos)
 	return t
 end
 

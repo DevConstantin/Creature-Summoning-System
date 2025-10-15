@@ -6,11 +6,14 @@ local PhysicsService = game:GetService("PhysicsService")
 --- // OBJECTS
 local CreatureModule = require(script.Parent.Creature)
 local CreatureStats = require(script.Parent.CreatureStats)
+local ZoneModule = require(ReplicatedStorage.RSModules.Zone)
 local creatures = ServerStorage.Creatures
 
 local summonSystem = workspace.CreatureSummonSystem
-local targetSpawn = summonSystem.CreatureSpawn
-local creatureZone = summonSystem.CreatureZone
+local summonBriefcase: BasePart = summonSystem.CreatureSpawner
+local targetSpawn: BasePart = summonSystem.CreatureSpawn
+local creatureZoneContainer: Folder | BasePart = summonSystem.CreatureZone
+local creatureZone = ZoneModule.new(creatureZoneContainer)
 
 local creatureSummonEvents = ReplicatedStorage.RemoteEvents.CreatureSummonSystem
 
@@ -95,6 +98,10 @@ local function despawnRequested(player, creatureType: string)
 			continue
 		end
 		local success, result = pcall(function()
+			local moveTime = creatureClass:moveToPoint(targetSpawn.Position)
+			creatureClass.despawning = true
+			-- Wait until the creature reaches the spawn position / briefcase, then despawn
+			task.wait(moveTime + 0.5) -- Wait until the creature reaches the briefcase
 			creatureClass:despawn()
 			activeCreatures[creatureClass] = nil
 		end)
@@ -118,7 +125,7 @@ local function summonRequested(player, creatureType: string)
 			warn("Failed to get a creature model for creatureType:", creatureType)
 			return
 		end
-		local creature = CreatureModule.spawn(creatureModelTemplate, targetSpawn.CFrame, true)
+		local creature = CreatureModule.spawn(creatureModelTemplate, targetSpawn.CFrame, true, true)
 		activeCreatures[creature] = creature.model -- Store reference to the creature class and model
 
 		task.wait(MOVEMENT_DELAY)
@@ -128,11 +135,8 @@ local function summonRequested(player, creatureType: string)
 			if not creature.model or not creature.model.Parent then
 				break
 			end
-			local t = creature:roam(
-				nil,
-				creatureType == "Pixie" and workspace.PixieRoamArea:GetChildren()
-					or workspace.DementorRoamArea:GetChildren()
-			)
+			local targetRoamArea = creatureType == "Pixie" and workspace.PixieRoamArea or creatureZone
+			local t = creature:roam(targetRoamArea)
 			task.wait(t)
 		end
 	else
@@ -144,7 +148,7 @@ end
 local function suitcaseTriggered(player)
 	if isGamekeeper(player) then
 		print(creaturesList)
-		summonSystem.CreatureSpawner.Sparkles:Emit(10)
+		summonBriefcase.Sparkles:Emit(10)
 		creatureSummonEvents.SummonCreature:FireClient(player, creaturesList)
 	else
 		warn("Only the Care of Magical Creatures instructor can use this.")
@@ -202,4 +206,4 @@ end
 
 creatureSummonEvents.SummonCreature.OnServerEvent:Connect(summonRequested)
 creatureSummonEvents.RemoveCreature.OnServerEvent:Connect(despawnRequested)
-summonSystem.CreatureSpawner.ProximityPrompt.Triggered:Connect(suitcaseTriggered)
+summonBriefcase.ProximityPrompt.Triggered:Connect(suitcaseTriggered)
