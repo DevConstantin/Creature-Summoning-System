@@ -71,7 +71,7 @@ end
 -- @param list: A list of objects to loop through, either players or characters
 -- @param aggroRange: Optional, range for the creature to consider targets. Defaults to math.huge
 -- @param aggroOrigin: Optional, the origin of the aggro range to consider targets, so the creature can't wander forever. Defaults to currentPos if nil
-function Utilities.getClosest(currentPos, list, aggroRange, aggroOrigin)
+function Utilities.getClosest(currentPos: Vector3, list: table, aggroRange: number?, aggroOrigin: Vector3?): Vector3
 	if not aggroRange then
 		aggroRange = math.huge
 	end
@@ -104,7 +104,7 @@ function Utilities.getClosest(currentPos, list, aggroRange, aggroOrigin)
 	end
 	local velocityOffset = targetHumrp.AssemblyLinearVelocity * 0.32
 	-- Predict where the player will be in PREDICTION_TIME seconds
-	return closestTarget, targetHumrp.Position
+	return targetHumrp.Position, closestTarget
 end
 
 return Utilities

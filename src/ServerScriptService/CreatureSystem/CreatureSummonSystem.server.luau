@@ -5,6 +5,7 @@ local PhysicsService = game:GetService("PhysicsService")
 
 --- // OBJECTS
 local CreatureModule = require(script.Parent.Creature)
+local CreatureStats = require(script.Parent.CreatureStats)
 local creatures = ServerStorage.Creatures
 
 local summonSystem = workspace.CreatureSummonSystem
@@ -13,20 +14,41 @@ local creatureZone = summonSystem.CreatureZone
 
 local creatureSummonEvents = ReplicatedStorage.RemoteEvents.CreatureSummonSystem
 
+--- // CONFIG
 local MOVEMENT_DELAY = 3 -- How long until the creature can move. Related to sparkle life length
-local activeCreatures = {}
-local creaturesList = {}
+local MAX_CREATURES = 7 -- Max number of creatures allowed to be summoned at once. Set to 0 or nil for unlimited (not recommended)
 
+local activeCreatures = {} -- Table to hold references for creature classes & creatures that are active in the game world
+local creaturesList = {} -- Dictionary of creatures and their limits, sent to clients
+
+--- // FUNCTIONS
 -- Must be updated for WOS
 local function isGamekeeper(player)
 	return true
 end
 
-local function canSummon(player, creatureType: string)
+local function canSummon(player, creatureType: string): boolean
 	if not isGamekeeper(player) then
 		return false, "Only the Care of Magical Creatures instructor to summon creatures."
 	end
 
+	if not creatureType or typeof(creatureType) ~= "string" then
+		return false, "Invalid creature type."
+	end
+
+	-- Check against the global max creatures
+	-- Skipped if MAX_CREATURES is 0 or nil
+	if MAX_CREATURES and MAX_CREATURES > 0 then
+		local activeCreaturesCount = 0
+		for _, _ in pairs(activeCreatures) do
+			activeCreaturesCount += 1
+		end
+		if activeCreaturesCount >= MAX_CREATURES then
+			return false, "Maximum number of creatures reached."
+		end
+	end
+
+	-- Check against the creature's summon cap
 	local limit = creaturesList[creatureType]
 	if limit then
 		local activeNum = 0
@@ -35,7 +57,6 @@ local function canSummon(player, creatureType: string)
 				activeNum += 1
 			end
 		end
-
 		if activeNum < limit then
 			return true
 		end
@@ -43,7 +64,6 @@ local function canSummon(player, creatureType: string)
 		warn("Failed to get a creature summon limit for", creatureType)
 		return false
 	end
-
 	return false, creatureType .. " limit reached."
 end
 
@@ -68,6 +88,7 @@ local function despawnRequested(player, creatureType: string)
 
 	print("Looking to despawn a", creatureType, "Active creatures:", activeCreatures)
 
+	-- Despawn the first creature found of the requested type
 	for creatureClass, creatureModel in pairs(activeCreatures) do
 		print(creatureModel.Name, creatureType, creatureModel.Name == creatureType)
 		if creatureModel.Name ~= creatureType then
@@ -98,10 +119,11 @@ local function summonRequested(player, creatureType: string)
 			return
 		end
 		local creature = CreatureModule.spawn(creatureModelTemplate, targetSpawn.CFrame, true)
-		activeCreatures[creature] = creature.model
+		activeCreatures[creature] = creature.model -- Store reference to the creature class and model
 
 		task.wait(MOVEMENT_DELAY)
 
+		-- Placeholder roaming behavior
 		for i = 1, 1000 do
 			if not creature.model or not creature.model.Parent then
 				break
@@ -118,6 +140,7 @@ local function summonRequested(player, creatureType: string)
 	end
 end
 
+-- Open creature summon GUI for the player, if they are the gamekeeper
 local function suitcaseTriggered(player)
 	if isGamekeeper(player) then
 		print(creaturesList)
@@ -128,11 +151,28 @@ local function suitcaseTriggered(player)
 	end
 end
 
-local function setupCreature(creature)
+-- Initial setup for each creature model
+local function setupCreature(creature: Model)
+	-- Ensure the creature model has the necessary components
+	if not creature:FindFirstChild("Rig") then
+		error("Creature model " .. creature.Name .. " is missing a Rig!")
+	end
+	local animations = creature:FindFirstChild("Animations")
+	if not animations then
+		error("Creature model " .. creature.Name .. " is missing an Animations folder!")
+	elseif #animations:GetChildren() == 0 or not animations:FindFirstChild("Idle") then
+		error("Creature model " .. creature.Name .. " has no animations!")
+	end
+
 	local creatureName = creature.Name
-	local summonLimit = creature:FindFirstChild("SummonLimit")
-	if summonLimit and summonLimit.Value > 0 then
-		creaturesList[creature.Name] = summonLimit.Value
+	local creatureStats = CreatureStats[creatureName]
+	if not creatureStats then
+		warn("No stats found for creature:", creatureName, "Using Default stats.")
+		creatureStats = CreatureStats["Default"]
+	end
+	local summonLimit = creatureStats.summonCap
+	if summonLimit and summonLimit > 0 then
+		creaturesList[creature.Name] = summonLimit
 	end
 
 	local selfCollisions = creature:FindFirstChild("SelfCollisions") and creature.SelfCollisions.Value
@@ -156,7 +196,7 @@ end
 
 --- // MAIN
 
-for i, creature in ipairs(creatures:GetChildren()) do
+for _, creature in ipairs(creatures:GetChildren()) do
 	setupCreature(creature)
 end
 
