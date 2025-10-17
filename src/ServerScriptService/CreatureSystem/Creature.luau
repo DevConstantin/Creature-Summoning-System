@@ -101,7 +101,7 @@ function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceFi
 	self.humanoid = humanoid
 	self.rootPart = model:WaitForChild("HumanoidRootPart")
 	self.creatureName = creatureName
-	self.despawning = false
+	self.despawning = false -- Flag to prevent actions such as movement when despawning
 
 	-- Initialize creature stats
 	local stats = creatureStats[creatureName] or creatureStats["Default"]
@@ -120,6 +120,7 @@ function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceFi
 	-- Tables
 	self.connections = {}
 	self.animations = {}
+	self.activeAnimations = {}
 	local animsFolder = npcModelTemplate:FindFirstChild("Animations")
 	if animsFolder then
 		for _, animation in ipairs(animsFolder:GetChildren()) do
@@ -131,23 +132,24 @@ function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceFi
 
 	-- Spawn the creature
 	self:playAnimation("Idle")
-
 	if not self.model:FindFirstChild("IsFlying") then
 		-- Set a random WalkSpeed, can be updated later
 		humanoid.WalkSpeed = math.random(self.speedMin, self.speedMax)
 
+
 		-- If the creature has a walk animation, switch between walk and idle based on movement
 		-- Only do this if the creature has a walk animation
-		if self.animations["Walk"] then
-			local movementChangedConnect
-			movementChangedConnect = humanoid:GetPropertyChangedSignal("MoveDirection"):Connect(function()
-				if humanoid.MoveDirection.Magnitude > 0 and self.Animations["Walk"] then
+		local hasWalk = self.animations["Walk"] ~= nil
+		if hasWalk then
+			humanoid.Running:Connect(function()
+				print("Humanoid running for", self.creatureName, "Velocity:", self.rootPart.Velocity)
+				if math.floor(self.rootPart.Velocity.Magnitude) > 0 then
 					self:playAnimation("Walk")
 				else
+					self:stopAnimation("Walk")
 					self:playAnimation("Idle")
 				end
 			end)
-			table.insert(self.connections, movementChangedConnect)
 		end
 	end
 
@@ -232,11 +234,22 @@ function NPC:playAnimation(animationType: "Idle" | "Walk" | "Attack" | "Death")
 	local animation: Animation = self.animations[animationType]
 	local animController = self.model:FindFirstChild("Rig") and self.model.Rig:FindFirstChild("AnimationController")
 	if animation and animController then
+		print("Playing animation", animationType, "for", self.creatureName)
 		local loadedAnim = animController:LoadAnimation(animation)
 		loadedAnim:Play()
+		table.insert(self.activeAnimations, loadedAnim)
 	else
 		warn("Failed to get animation ID for animation type:", animationType, "for", self.creatureName)
 	end
+end
+
+function NPC:stopAnimation(animationType: "Idle" | "Walk" | "Attack" | "Death" | "All")
+	for _, anim in pairs(self.activeAnimations) do
+		if animationType == "All" or anim.Name == animationType then
+			anim:Stop()
+		end
+	end
+	self.activeAnimations = {}
 end
 
 -- Method to move the NPC to a position
@@ -318,6 +331,7 @@ end
 
 -- Method to respawn an NPC and disconnect all connections
 function NPC:despawn()
+	self.despawning = true
 	if self.model and self.model.Parent then
 		self:emitSparkles()
 		for _, part in ipairs(self.model:GetDescendants()) do

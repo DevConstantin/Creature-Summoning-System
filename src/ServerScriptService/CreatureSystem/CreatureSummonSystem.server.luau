@@ -20,6 +20,8 @@ local creatureSummonEvents = ReplicatedStorage.RemoteEvents.CreatureSummonSystem
 --- // CONFIG
 local MOVEMENT_DELAY = 3 -- How long until the creature can move. Related to sparkle life length
 local MAX_CREATURES = 7 -- Max number of creatures allowed to be summoned at once. Set to 0 or nil for unlimited (not recommended)
+local MAX_DESPAWN_DISTANCE = 200 -- Max distance from the spawn point before a creature despawns itself
+local MAX_DESPAWN_TIME = 300
 
 local activeCreatures = {} -- Table to hold references for creature classes & creatures that are active in the game world
 local creaturesList = {} -- Dictionary of creatures and their limits, sent to clients
@@ -43,6 +45,7 @@ local function canSummon(player, creatureType: string): boolean
 	-- Skipped if MAX_CREATURES is 0 or nil
 	if MAX_CREATURES and MAX_CREATURES > 0 then
 		local activeCreaturesCount = 0
+		-- Use pairs to count the number of active creatures, as # won't work on a dictionary
 		for _, _ in pairs(activeCreatures) do
 			activeCreaturesCount += 1
 		end
@@ -99,6 +102,7 @@ local function despawnRequested(player, creatureType: string)
 		end
 		local success, result = pcall(function()
 			local moveTime = creatureClass:moveToPoint(targetSpawn.Position)
+			moveTime = math.clamp(moveTime, 0, MAX_DESPAWN_TIME)
 			creatureClass.despawning = true
 			-- Wait until the creature reaches the spawn position / briefcase, then despawn
 			task.wait(moveTime + 0.5) -- Wait until the creature reaches the briefcase
