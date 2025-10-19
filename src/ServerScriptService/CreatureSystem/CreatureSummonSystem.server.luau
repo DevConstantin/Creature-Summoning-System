@@ -159,12 +159,14 @@ local function suitcaseTriggered(player)
 	end
 end
 
--- Initial setup for each creature model
+-- Initial setup for each creature model, including validation
 local function setupCreature(creature: Model)
 	-- Ensure the creature model has the necessary components
 	if not creature:FindFirstChild("Rig") then
 		error("Creature model " .. creature.Name .. " is missing a Rig!")
 	end
+
+	-- Ensure the creature model has an Animations folder with at least an Idle animation
 	local animations = creature:FindFirstChild("Animations")
 	if not animations then
 		error("Creature model " .. creature.Name .. " is missing an Animations folder!")
@@ -172,17 +174,28 @@ local function setupCreature(creature: Model)
 		error("Creature model " .. creature.Name .. " has no animations!")
 	end
 
+	-- Ensure all sounds are parented to a BasePart or Attachment
+	for _, sound in ipairs(creature:GetDescendants()) do
+		if sound:IsA("Sound") and not sound.Parent:IsA("BasePart") and not sound.Parent:IsA("Attachment") then
+			warn("Sound", sound.Name, "in creature", creature.Name, "is not parented to a BasePart or Attachment. This may cause issues.")
+		end
+	end
+
+	-- Access the creature's stats, or use Default if none are found
 	local creatureName = creature.Name
 	local creatureStats = CreatureStats[creatureName]
 	if not creatureStats then
 		warn("No stats found for creature:", creatureName, "Using Default stats.")
 		creatureStats = CreatureStats["Default"]
 	end
+
+	-- Apply stats to the creature model
 	local summonLimit = creatureStats.summonCap
 	if summonLimit and summonLimit > 0 then
 		creaturesList[creature.Name] = summonLimit
 	end
 
+	-- Setup collision group for the creature to avoid self-collisions
 	local selfCollisions = creature:FindFirstChild("SelfCollisions") and creature.SelfCollisions.Value
 	if not selfCollisions then
 		PhysicsService:RegisterCollisionGroup(creatureName)

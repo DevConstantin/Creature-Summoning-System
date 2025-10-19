@@ -2,6 +2,7 @@
 -- Add 'Collisions' BoolValue to configure if the creature has collisions or not
 -- Add "SelfCollisions" BoolValue to configure if the creature has collisions with itself (so pixies don't collide for instance)
 -- Add a "IsFlying" BoolValue to the creature if it's supposed to fly. AlignPosition and AlignOrientation will be set up by 'Utilities' module
+-- You can place sparkle FX (must be named 'Sparkles') anywhere in the NPC. Creature initialization will set up a "SparklesValue" object value to easily reference them
 
 local NPC = {}
 NPC.__index = NPC
@@ -18,7 +19,7 @@ local Utilities = require(script.Parent.Utilities)
 local creatureStats = require(script.Parent.CreatureStats)
 local summonedCreatures = workspace.SummonedCreatures
 
-local visibilityTweenInfo = TweenInfo.new(2)
+local visibilityTweenInfo = TweenInfo.new(2, Enum.EasingStyle.Exponential, Enum.EasingDirection.In)
 
 --- // CONFIG
 local SUMMON_SPARKLE_AMOUNT = 10
@@ -67,11 +68,9 @@ local function spawnNPC(model, spawnCFrame: CFrame, useFF: boolean)
 		if creatureName == "Dementor" then
 			print(part:GetFullName(), targetTransparency)
 		end
-
 		if part.Transparency ~= targetTransparency then
 			TweenPlus:Create(part, visibilityTweenInfo, { Transparency = targetTransparency }):Play()
 		end
-
 		if collisions == false then
 			part.CanCollide = false
 		end
@@ -98,6 +97,7 @@ function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceFi
 
 	-- Basic info
 	self.model = model
+	self.head = model:FindFirstChild("Head") or model:FindFirstChild("HeadPart")
 	self.humanoid = humanoid
 	self.rootPart = model:WaitForChild("HumanoidRootPart")
 	self.creatureName = creatureName
@@ -119,8 +119,18 @@ function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceFi
 
 	-- Tables
 	self.connections = {}
-	self.animations = {}
-	self.activeAnimations = {}
+	self.animations = {} -- Raw Animation objects
+	self.loadedAnimations = {} -- Cached AnimationTracks
+	self.activeAnimations = {} -- Currently playing tracks
+
+	-- Sounds may be parented to different parts for better emission control
+	self.sounds = {}
+	for _, sound in ipairs(model:GetDescendants()) do
+		if sound:IsA("Sound") then
+			self.sounds[sound.Name] = sound
+		end
+	end
+
 	local animsFolder = npcModelTemplate:FindFirstChild("Animations")
 	if animsFolder then
 		for _, animation in ipairs(animsFolder:GetChildren()) do
@@ -130,26 +140,27 @@ function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceFi
 		warn("Failed to find animations folder within", npcModelTemplate)
 	end
 
-	-- Spawn the creature
-	self:playAnimation("Idle")
+	-- For whatever reason, the hippogriff walk animation will not play unless set here first
+	if self.creatureName == "Hippogriff" then
+		self:playAnimation("Walk")
+	else
+		self:playAnimation("Idle")
+	end
+
 	if not self.model:FindFirstChild("IsFlying") then
-		-- Set a random WalkSpeed, can be updated later
 		humanoid.WalkSpeed = math.random(self.speedMin, self.speedMax)
 
-
-		-- If the creature has a walk animation, switch between walk and idle based on movement
-		-- Only do this if the creature has a walk animation
 		local hasWalk = self.animations["Walk"] ~= nil
 		if hasWalk then
-			humanoid.Running:Connect(function()
-				print("Humanoid running for", self.creatureName, "Velocity:", self.rootPart.Velocity)
-				if math.floor(self.rootPart.Velocity.Magnitude) > 0 then
+			-- Store connection for cleanup
+			table.insert(self.connections, humanoid.Running:Connect(function(speed)
+				if math.floor(speed) > 0 then
 					self:playAnimation("Walk")
 				else
 					self:stopAnimation("Walk")
 					self:playAnimation("Idle")
 				end
-			end)
+			end))
 		end
 	end
 
@@ -188,7 +199,9 @@ function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceFi
 	return self
 end
 
+------------------------------------------------ EFFECT & SOUND METHODS ------------------------------------------------
 -- Doesn't seem to work properly when spawning the creature in
+-- Important: The object value for sparkles is stored in the template creatures upon initialization (under CreatureSummonSystem script)
 function NPC:emitSparkles()
 	local sparklesValue = self.model and self.model.Parent and self.model:FindFirstChild("SparklesValue")
 	if sparklesValue and sparklesValue.Value then
@@ -200,10 +213,93 @@ function NPC:emitSparkles()
 	end
 end
 
+function NPC:playSound(soundType: "Move" | "Run" | "Attack" | "Scream" | "Death")
+	local sound = self.sounds[soundType]
+	if sound then
+		sound:Play()
+	else
+		warn("Failed to find sound:", soundType, "on", self.creatureName)
+	end
+end
+
+function NPC:stopSound(soundType: "Move" | "Run" | "Attack" | "Scream" | "Death")
+	local sound = self.sounds[soundType]
+	if sound and sound.IsPlaying then
+		sound:Stop()
+	else
+		warn("Failed to find sound:", soundType, "on", self.creatureName)
+	end
+end
+
+------------------------------------------------ UTILITY METHODS ------------------------------------------------
 -- Method to get NPC's current position
 -- @return: NPC's current position
 function NPC:getPosition(): Vector3?
 	return self.rootPart and self.rootPart.Position
+end
+
+--------------------------------------------- ANIMATION METHODS ---------------------------------------------
+function NPC:playAnimation(animationType: "Idle" | "Walk" | "Attack" | "Death")
+    -- If already playing this animation, don't restart it
+    if self.activeAnimations[animationType] and self.activeAnimations[animationType].IsPlaying then
+        return
+    end
+
+    local animation: Animation = self.animations[animationType]
+    local animController = self.model:FindFirstChild("Rig") and self.model.Rig:FindFirstChild("AnimationController")
+    
+    if not animation or not animController then
+        warn("Failed to get animation ID for animation type:", animationType, "for", self.creatureName)
+        return
+    end
+
+    -- Load animation once and cache it
+    if not self.loadedAnimations[animationType] then
+        local loadedAnim = animController:LoadAnimation(animation)
+        loadedAnim.Name = animationType
+        self.loadedAnimations[animationType] = loadedAnim
+		print("Play animation function:", animationType, "cached for", self.creatureName)
+    end
+
+    local track = self.loadedAnimations[animationType]
+    track:Play()
+    self.activeAnimations[animationType] = track
+
+    print("Now playing animation", animationType, "for", self.creatureName)
+end
+
+function NPC:stopAnimation(animationType: "Idle" | "Walk" | "Attack" | "Death" | "All")
+    if animationType == "All" then
+        for name, track in pairs(self.activeAnimations) do
+            track:Stop()
+        end
+        table.clear(self.activeAnimations)
+		print("All animations stopped for", self.creatureName)
+    else
+        local track = self.activeAnimations[animationType]
+        if track then
+			print("Stopping", animationType, "animation for", self.creatureName)
+            track:Stop()
+            self.activeAnimations[animationType] = nil
+        end
+    end
+end
+
+--------------------------------------------- MOVEMENT METHODS ---------------------------------------------
+-- @return speed of the creature. WARNING: This function can return 0, which must be accounted for in any calculations!
+function NPC:getSpeed(): number
+	local speed = 16
+	if self.model:FindFirstChild("IsFlying") then
+		local alignPos = Utilities.getFlightInstances(self.model)
+		if alignPos then
+			speed = alignPos.MaxVelocity
+		else
+			speed = self.humanoid.WalkSpeed
+		end
+	else
+		speed = self.humanoid.WalkSpeed
+	end
+	return speed > 0 and speed or 16
 end
 
 -- Method to update the NPC's movement speed
@@ -211,9 +307,9 @@ function NPC:updateSpeed(targetSpeed: number)
 	local hum = self.humanoid
 	--print("Updating speed to", targetSpeed)
 
+	-- Account for flying creatures, which use separate functionality
 	if self.model:FindFirstChild("IsFlying") then
-		local humrp = self.model:WaitForChild("HumanoidRootPart")
-		local alignPos = humrp:FindFirstChild("AlignPosition")
+		local alignPos = Utilities.getFlightInstances(self.model)
 		if alignPos then
 			alignPos.MaxVelocity = targetSpeed
 		else
@@ -230,32 +326,10 @@ local function flyMove(npcModel: Model, currentPos: Vector3, targetPos: Vector3)
 	flightPosPart.CFrame = CFrame.lookAlong(targetPos, (targetPos - currentPos).Unit)
 end
 
-function NPC:playAnimation(animationType: "Idle" | "Walk" | "Attack" | "Death")
-	local animation: Animation = self.animations[animationType]
-	local animController = self.model:FindFirstChild("Rig") and self.model.Rig:FindFirstChild("AnimationController")
-	if animation and animController then
-		print("Playing animation", animationType, "for", self.creatureName)
-		local loadedAnim = animController:LoadAnimation(animation)
-		loadedAnim:Play()
-		table.insert(self.activeAnimations, loadedAnim)
-	else
-		warn("Failed to get animation ID for animation type:", animationType, "for", self.creatureName)
-	end
-end
-
-function NPC:stopAnimation(animationType: "Idle" | "Walk" | "Attack" | "Death" | "All")
-	for _, anim in pairs(self.activeAnimations) do
-		if animationType == "All" or anim.Name == animationType then
-			anim:Stop()
-		end
-	end
-	self.activeAnimations = {}
-end
-
 -- Method to move the NPC to a position
 -- @param area: zone value
--- @return: Estimated time to reach the destination
-function NPC:moveToPoint(pos: Vector3): number
+-- @return: Estimated time to reach the destination. Will return nil if the creature is stationary, which shouldn't happen
+function NPC:moveToPoint(pos: Vector3): number?
 	if self.despawning then
 		return
 	end
@@ -272,19 +346,13 @@ function NPC:moveToPoint(pos: Vector3): number
 		self.humanoid:MoveTo(pos)
 	end
 
-	return currentPos and (pos - currentPos).Magnitude / self.humanoid.WalkSpeed
-end
-
--- Method to make an NPC stalk a player
-function NPC:trackPlayer(targetPlayer)
-	print("Tracking", targetPlayer)
-end
-
--- Method to damage a player near the NPC
-function NPC:damageNearby()
-	if not self.biteRange or not self.damagePart then
-		warn(self.creatureName, "cannot do damage! Missing:", self.biteRange, self.damagePart)
-		return
+	local speed = self:getSpeed()
+	if speed == 0 or self.model:GetAttribute("UnderPetrificus") then
+		return nil
+	else
+		local travelTime = currentPos and (pos - currentPos).Magnitude / speed
+		print("Moving", self.creatureName, "to", pos, "from", currentPos, "Travel time:", travelTime)
+		return travelTime
 	end
 end
 
@@ -317,17 +385,37 @@ function NPC:roam(roamArea: Folder | Zone): number?
 	local targetPos = nil
 	if typeof(roamArea) == "Instance" and roamArea:IsA("Folder") then
 		local roamNodes = roamArea:GetChildren()
+		if #roamNodes == 0 then 
+			warn("Roam area", roamArea, "is missing destination nodes!")
+			return nil
+		end
 		targetPos = roamNodes[math.random(1, #roamNodes)].Position
 	elseif roamArea ~= nil then
 		targetPos = roamArea:getRandomPoint()
 	else
 		warn("You must provide either a roam zone object or table of nodes for NPC:roam function!")
-		return
+		return nil
 	end
 
 	local t = self:moveToPoint(targetPos)
 	return t
 end
+
+-- Method to make an NPC stalk a player
+function NPC:trackPlayer(targetPlayer: Player)
+	print("Tracking", targetPlayer)
+end
+
+--------------------------------------------- COMBAT METHODS ---------------------------------------------
+-- Method to damage a player near the NPC
+function NPC:damageNearby()
+	if not self.biteRange or not self.damagePart then
+		warn(self.creatureName, "cannot do damage! Missing:", self.biteRange, self.damagePart)
+		return
+	end
+end
+
+--------------------------------------------- DESPAWN METHOD ---------------------------------------------
 
 -- Method to respawn an NPC and disconnect all connections
 function NPC:despawn()
@@ -346,6 +434,8 @@ function NPC:despawn()
 	for _, connection in ipairs(self.connections) do
 		connection:Disconnect()
 	end
+	table.clear(self.connections)
+    table.clear(self.loadedAnimations)
 end
 
 return NPC

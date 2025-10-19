@@ -1,7 +1,20 @@
 local Utilities = {}
 
+function Utilities.getFlightInstances(npcModel: Model): (AlignPosition?, AlignOrientation?, Part?)
+	local humrp = npcModel:FindFirstChild("HumanoidRootPart")
+	if not humrp then
+		return nil, nil, nil
+	end
+
+	local alignPos = humrp:FindFirstChild("AlignPosition")
+	local alignOri = humrp:FindFirstChild("AlignOrientation")
+	local alignPosPart = npcModel:FindFirstChild("AlignPosPart")
+
+	return alignPos, alignOri, alignPosPart
+end
+
 -- Method to setup the necessary instances and prepare an NPC model for flight
-function Utilities.setupFlight(npcModel)
+function Utilities.setupFlight(npcModel: Model): Part?
 	local success, result = pcall(function()
 		local humrp = npcModel:WaitForChild("HumanoidRootPart")
 
