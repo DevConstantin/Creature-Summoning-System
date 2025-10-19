@@ -10,6 +10,7 @@ NPC.__index = NPC
 --- // SERVICES
 local TweenPlus = game:GetService("TweenService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local PhysicsService = game:GetService("PhysicsService")
 local Debris = game:GetService("Debris")
@@ -18,6 +19,7 @@ local Debris = game:GetService("Debris")
 local Utilities = require(script.Parent.Utilities)
 local creatureStats = require(script.Parent.CreatureStats)
 local summonedCreatures = workspace.SummonedCreatures
+local Pathfinding = require(ReplicatedStorage.RSModules.Pathfinding)
 
 local visibilityTweenInfo = TweenInfo.new(2, Enum.EasingStyle.Exponential, Enum.EasingDirection.In)
 
@@ -93,7 +95,8 @@ function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceFi
 
 	local model = npcModelTemplate:Clone()
 	local creatureName = npcModelTemplate.Name
-	local humanoid = model:WaitForChild("Humanoid")
+	self.humanoidRootPart = model.HumanoidRootPart
+	local humanoid = model.Humanoid
 
 	-- Basic info
 	self.model = model
@@ -116,6 +119,8 @@ function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceFi
 	self.damagePart = model:FindFirstChild("DamagePart") -- The part that will be used to check for players to damage
 	self.trackTarget = nil
 	self.isClassSummon = isClassSummon or false
+
+	self.targetDestination = nil
 
 	-- Tables
 	self.connections = {}
@@ -286,6 +291,10 @@ function NPC:stopAnimation(animationType: "Idle" | "Walk" | "Attack" | "Death" |
 end
 
 --------------------------------------------- MOVEMENT METHODS ---------------------------------------------
+function NPC:canMove(): boolean
+	return not self.despawning and self.humanoid.Health > 0 and not self.model:GetAttribute("UnderPetrificus")
+end
+
 -- @return speed of the creature. WARNING: This function can return 0, which must be accounted for in any calculations!
 function NPC:getSpeed(): number
 	local speed = 16
@@ -330,30 +339,77 @@ end
 -- @param area: zone value
 -- @return: Estimated time to reach the destination. Will return nil if the creature is stationary, which shouldn't happen
 function NPC:moveToPoint(pos: Vector3): number?
-	if self.despawning then
-		return
+	if not self:canMove() then
+		return nil
 	end
 
 	if not pos then
 		warn("Missing pos value for moveTo function.")
-		return
+		return nil
 	end
 
+	self.targetDestination = pos
+	local targetDestination = pos
 	local currentPos = self:getPosition()
+	local speed = self:getSpeed()
+	if speed <= 0 then
+		warn("Creature", self.creatureName, "has 0 speed! Cannot move.")
+		return nil
+	end
+
+	-- Handle flying creatures separately
 	if self.model:FindFirstChild("IsFlying") then
 		flyMove(self.model, currentPos, pos)
-	else
-		self.humanoid:MoveTo(pos)
+		return (currentPos and (pos - currentPos).Magnitude / speed)
 	end
 
-	local speed = self:getSpeed()
-	if speed == 0 or self.model:GetAttribute("UnderPetrificus") then
-		return nil
-	else
+	-- Handle ground movement with pathfinding
+	local pathWaypoints = Pathfinding:GetWaypoints(self.creatureName, currentPos, pos)
+
+	-- Fallback: If pathfinding fails, move directly to the point
+	if not pathWaypoints or #pathWaypoints == 0 then
+		warn("Failed to get path waypoints for", self.creatureName, "from", currentPos, "to", pos)
+		self.humanoid:MoveTo(pos)
 		local travelTime = currentPos and (pos - currentPos).Magnitude / speed
 		print("Moving", self.creatureName, "to", pos, "from", currentPos, "Travel time:", travelTime)
 		return travelTime
 	end
+
+	task.spawn(function()
+		for num, waypoint in ipairs(pathWaypoints) do
+			if not self:canMove() or targetDestination ~= self.targetDestination then
+				break
+			end
+			self.humanoid:MoveTo(waypoint.Position)
+			print("Moving to waypoint ", num, "at", waypoint.Position, "for", self.creatureName)
+
+			-- Frankly this is a mess, but MoveToFinished is choppy resulting in stuttered movement
+			-- Also this should ideally be on the client
+			local MoveToFinished = false
+			local ListenConn
+			ListenConn = self.humanoid.MoveToFinished:connect(function()
+				ListenConn:Disconnect()
+				MoveToFinished = true
+			end)
+
+			while MoveToFinished == false do
+				local wpDistance = (self.humanoidRootPart.Position - waypoint.Position).Magnitude
+				local distFactor = 3.3
+				if wpDistance <= distFactor then
+					ListenConn:Disconnect()
+					break
+				end
+				RunService.Heartbeat:Wait()
+			end
+		end
+	end)
+
+	local travelDistance = 0
+	for i = 2, #pathWaypoints do
+		travelDistance += (pathWaypoints[i].Position - pathWaypoints[i - 1].Position).Magnitude
+	end
+	local travelTime = travelDistance / speed
+	return travelTime
 end
 
 -- Generic method to loop through nearby players and move towards one
@@ -378,7 +434,7 @@ end
 -- @param area: zone class to grab a random position
 -- @param nodeTable: list of node parts to move to
 function NPC:roam(roamArea: Folder | Zone): number?
-	if self.despawning then
+	if not self:canMove() then
 		return
 	end
 
