@@ -162,15 +162,15 @@ end
 -- Initial setup for each creature model, including validation
 local function setupCreature(creature: Model)
 	-- Ensure the creature model has the necessary components
-	if not creature:FindFirstChild("Rig") then
-		error("Creature model " .. creature.Name .. " is missing a Rig!")
-	end
+	-- if not creature:FindFirstChild("Rig") then
+	-- 	error("Creature model " .. creature.Name .. " is missing a Rig!")
+	-- end
 
 	-- Ensure the creature model has an Animations folder with at least an Idle animation
 	local animations = creature:FindFirstChild("Animations")
 	if not animations then
 		error("Creature model " .. creature.Name .. " is missing an Animations folder!")
-	elseif #animations:GetChildren() == 0 or not animations:FindFirstChild("Idle") then
+	elseif #animations:GetChildren() == 0 then
 		error("Creature model " .. creature.Name .. " has no animations!")
 	end
 

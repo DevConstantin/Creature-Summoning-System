@@ -151,6 +151,7 @@ function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceFi
 	else
 		self:playAnimation("Idle")
 	end
+	self:playSound("Idle")
 
 	if not self.model:FindFirstChild("IsFlying") then
 		humanoid.WalkSpeed = math.random(self.speedMin, self.speedMax)
@@ -160,10 +161,14 @@ function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceFi
 			-- Store connection for cleanup
 			table.insert(self.connections, humanoid.Running:Connect(function(speed)
 				if math.floor(speed) > 0 then
+					print("Creature", self.creatureName, "is moving at speed", speed)
 					self:playAnimation("Walk")
+					self:playSound("Walk")
 				else
+					print("Creature", self.creatureName, "has stopped moving.")
 					self:stopAnimation("Walk")
 					self:playAnimation("Idle")
+					self:playSound("Idle")
 				end
 			end))
 		end
@@ -218,16 +223,26 @@ function NPC:emitSparkles()
 	end
 end
 
-function NPC:playSound(soundType: "Move" | "Run" | "Attack" | "Scream" | "Death")
+function NPC:playSound(soundType: "Idle" | "Walk" | "Run" | "Attack" | "Scream" | "Death")
+	print("Sound play requested:", soundType, "on", self.creatureName)
 	local sound = self.sounds[soundType]
 	if sound then
+		if sound.IsPlaying then
+			return
+		end
 		sound:Play()
+		print("Playing sound:", soundType, "on", self.creatureName)
 	else
 		warn("Failed to find sound:", soundType, "on", self.creatureName)
+		local idleSound = self.sounds["Idle"] -- Fallback to idle sound
+		if idleSound then
+			print("Playing fallback idle sound on", self.creatureName)
+			idleSound:Play()
+		end
 	end
 end
 
-function NPC:stopSound(soundType: "Move" | "Run" | "Attack" | "Scream" | "Death")
+function NPC:stopSound(soundType: "Idle" | "Walk" | "Run" | "Attack" | "Scream" | "Death")
 	local sound = self.sounds[soundType]
 	if sound and sound.IsPlaying then
 		sound:Stop()
@@ -250,13 +265,22 @@ function NPC:playAnimation(animationType: "Idle" | "Walk" | "Attack" | "Death")
         return
     end
 
-    local animation: Animation = self.animations[animationType]
-    local animController = self.model:FindFirstChild("Rig") and self.model.Rig:FindFirstChild("AnimationController")
-    
-    if not animation or not animController then
-        warn("Failed to get animation ID for animation type:", animationType, "for", self.creatureName)
-        return
-    end
+
+    local animController = self.model:FindFirstChild("Rig") and self.model.Rig:FindFirstChild("AnimationController") or self.humanoid:FindFirstChild("Animator")
+    if not animController then
+		warn("Failed to find AnimationController for", self.creatureName)
+		return
+	end
+
+	local animation: Animation = self.animations[animationType]
+	if not animation then
+		if animationType ~= "Idle" then
+			warn("Animation", animationType, "not found for", self.creatureName, "Falling back to Idle animation.")
+		elseif animationType == "Idle" then
+			self:stopAnimation("All") -- Stop all animations if Idle is missing
+		end
+		return
+	end
 
     -- Load animation once and cache it
     if not self.loadedAnimations[animationType] then
@@ -438,6 +462,8 @@ function NPC:roam(roamArea: Folder | Zone): number?
 		return
 	end
 
+	math.randomseed(tick()) -- Ensure randomness
+
 	local targetPos = nil
 	if typeof(roamArea) == "Instance" and roamArea:IsA("Folder") then
 		local roamNodes = roamArea:GetChildren()
@@ -492,6 +518,9 @@ function NPC:despawn()
 	end
 	table.clear(self.connections)
     table.clear(self.loadedAnimations)
+	table.clear(self.activeAnimations)
+	table.clear(self.animations)
+	table.clear(self.sounds)
 end
 
 return NPC
