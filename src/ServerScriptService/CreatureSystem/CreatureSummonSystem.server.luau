@@ -45,12 +45,7 @@ local function canSummon(player, creatureType: string): boolean
 	-- Check against the global max creatures
 	-- Skipped if MAX_CREATURES is 0 or nil
 	if MAX_CREATURES and MAX_CREATURES > 0 then
-		local activeCreaturesCount = 0
-		-- Use pairs to count the number of active creatures, as # won't work on a dictionary
-		for _, _ in pairs(activeCreatures) do
-			activeCreaturesCount += 1
-		end
-		if activeCreaturesCount >= MAX_CREATURES then
+		if #summonedCreaturesFolder:GetChildren() >= MAX_CREATURES then
 			return false, "Maximum number of creatures reached."
 		end
 	end

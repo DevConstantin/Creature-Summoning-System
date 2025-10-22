@@ -18,8 +18,10 @@ local Debris = game:GetService("Debris")
 --- // OBJECTS
 local Utilities = require(script.Parent.Utilities)
 local creatureStats = require(script.Parent.CreatureStats)
-local summonedCreatures = workspace.SummonedCreatures
 local Pathfinding = require(ReplicatedStorage.RSModules.Pathfinding)
+
+local summonedCreatures: Folder = workspace.SummonedCreatures
+
 --- // CONFIG
 local SUMMON_SPARKLE_AMOUNT = 10
 local MOVEMENT_DELAY = 3 -- Related to sparkle life length
@@ -149,7 +151,7 @@ function NPC.spawn(npcModelTemplate, container: Folder, spawnLocation: CFrame | 
 
 	-- For whatever reason, the hippogriff walk animation will not play unless set here first
 
-	self:playAnimation("Walk")
+	self:playAnimation("Walk") -- This must be run first, or the walk animation will not play later. Don't know why. Will fall back to idle if no walk animation found
 	self:playSound("Idle")
 	if not self.model:FindFirstChild("IsFlying") then
 		humanoid.WalkSpeed = math.random(self.speedMin, self.speedMax)
@@ -230,7 +232,12 @@ function NPC:playSound(soundType: SoundType)
 
 	local sound = self.sounds[soundType]
 	if not sound then
+		print("Sound", soundType, "not found on", self.creatureName, "Falling back to Idle sound.")
 		sound = self.sounds["Idle"] -- Fallback to idle sound
+		if not sound then
+			-- print("Failed to find fallback Idle sound on", self.creatureName)
+			return
+		end
 	end
 
 	if not sound.IsPlaying then
@@ -310,7 +317,7 @@ function NPC:playAnimation(animationType: AnimationType)
     print("Now playing animation", animationType, "for", self.creatureName)
 end
 
-function NPC:stopAnimation(animationType: animationType | "All")
+function NPC:stopAnimation(animationType: AnimationType | "All")
     if animationType == "All" then
         for name, track in pairs(self.activeAnimations) do
             track:Stop()
