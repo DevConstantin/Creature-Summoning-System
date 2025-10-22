@@ -20,14 +20,17 @@ local Utilities = require(script.Parent.Utilities)
 local creatureStats = require(script.Parent.CreatureStats)
 local summonedCreatures = workspace.SummonedCreatures
 local Pathfinding = require(ReplicatedStorage.RSModules.Pathfinding)
-
-local visibilityTweenInfo = TweenInfo.new(2, Enum.EasingStyle.Exponential, Enum.EasingDirection.In)
-
 --- // CONFIG
 local SUMMON_SPARKLE_AMOUNT = 10
 local MOVEMENT_DELAY = 3 -- Related to sparkle life length
 local SPAWN_OFFSET = 3
+
+local visibilityTweenInfo = TweenInfo.new(2, Enum.EasingStyle.Exponential, Enum.EasingDirection.In)
+
+--- // TYPES
 type Zone = {}
+type AnimationType = "Idle" | "Walk" | "Run" | "Attack" | "Death"
+type SoundType = AnimationType | "Scream"
 
 local function createWeld(p1, p2)
 	local weld = Instance.new("WeldConstraint")
@@ -40,7 +43,7 @@ end
 -- Function to spawn an NPC and set up its parts
 -- @param spawnCFrame: Where the NPC will spawn
 -- @param useFF: Optional, add a force field and make the creature immortal
-local function spawnNPC(model, spawnCFrame: CFrame, useFF: boolean)
+local function spawnNPC(model, container: Folder, spawnCFrame: CFrame, useFF: boolean)
 	local creatureName = model.Name
 	model:PivotTo(
 		spawnCFrame + Vector3.new(math.random(-SPAWN_OFFSET, SPAWN_OFFSET), 0, math.random(-SPAWN_OFFSET, SPAWN_OFFSET))
@@ -80,13 +83,12 @@ local function spawnNPC(model, spawnCFrame: CFrame, useFF: boolean)
 			part.CollisionGroup = creatureName
 		end
 	end
-
-	model.Parent = summonedCreatures
+	model.Parent = container
 end
 
 -- Main spawn function for an NPC
 -- @param isClassSummon: Optional, if the creature is being summoned durring a COMC class, it will not attack the COMC instructor
-function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceField: boolean?, isClassSummon: boolean?)
+function NPC.spawn(npcModelTemplate, container: Folder, spawnLocation: CFrame | Vector3, useForceField: boolean?, isClassSummon: boolean?)
 	if typeof(spawnLocation) == Vector3 then
 		spawnLocation = CFrame.new(spawnLocation)
 	end
@@ -146,13 +148,9 @@ function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceFi
 	end
 
 	-- For whatever reason, the hippogriff walk animation will not play unless set here first
-	if self.creatureName == "Hippogriff" then
-		self:playAnimation("Walk")
-	else
-		self:playAnimation("Idle")
-	end
-	self:playSound("Idle")
 
+	self:playAnimation("Walk")
+	self:playSound("Idle")
 	if not self.model:FindFirstChild("IsFlying") then
 		humanoid.WalkSpeed = math.random(self.speedMin, self.speedMax)
 
@@ -174,7 +172,7 @@ function NPC.spawn(npcModelTemplate, spawnLocation: CFrame | Vector3, useForceFi
 		end
 	end
 
-	spawnNPC(model, spawnLocation, useForceField)
+	spawnNPC(model, container, spawnLocation, useForceField)
 	self:emitSparkles()
 
 	-- Run aggression functionality
@@ -223,26 +221,37 @@ function NPC:emitSparkles()
 	end
 end
 
-function NPC:playSound(soundType: "Idle" | "Walk" | "Run" | "Attack" | "Scream" | "Death")
+function NPC:playSound(soundType: SoundType)
 	print("Sound play requested:", soundType, "on", self.creatureName)
+	if not soundType then
+		warn("No sound type provided for playSound function on", self.creatureName)
+		return
+	end
+
 	local sound = self.sounds[soundType]
-	if sound then
-		if sound.IsPlaying then
-			return
-		end
+	if not sound then
+		sound = self.sounds["Idle"] -- Fallback to idle sound
+	end
+
+	if not sound.IsPlaying then
 		sound:Play()
 		print("Playing sound:", soundType, "on", self.creatureName)
 	else
-		warn("Failed to find sound:", soundType, "on", self.creatureName)
-		local idleSound = self.sounds["Idle"] -- Fallback to idle sound
-		if idleSound then
-			print("Playing fallback idle sound on", self.creatureName)
-			idleSound:Play()
-		end
+		print("Sound", soundType, "is already playing on", self.creatureName)
 	end
 end
 
-function NPC:stopSound(soundType: "Idle" | "Walk" | "Run" | "Attack" | "Scream" | "Death")
+function NPC:stopSound(soundType: SoundType | "All")
+	if soundType == "All" then
+		for name, sound in pairs(self.sounds) do
+			if sound.IsPlaying then
+				sound:Stop()
+			end
+		end
+		print("All sounds stopped for", self.creatureName)
+		return
+	end
+
 	local sound = self.sounds[soundType]
 	if sound and sound.IsPlaying then
 		sound:Stop()
@@ -259,12 +268,11 @@ function NPC:getPosition(): Vector3?
 end
 
 --------------------------------------------- ANIMATION METHODS ---------------------------------------------
-function NPC:playAnimation(animationType: "Idle" | "Walk" | "Attack" | "Death")
+function NPC:playAnimation(animationType: AnimationType)
     -- If already playing this animation, don't restart it
     if self.activeAnimations[animationType] and self.activeAnimations[animationType].IsPlaying then
         return
     end
-
 
     local animController = self.model:FindFirstChild("Rig") and self.model.Rig:FindFirstChild("AnimationController") or self.humanoid:FindFirstChild("Animator")
     if not animController then
@@ -274,9 +282,14 @@ function NPC:playAnimation(animationType: "Idle" | "Walk" | "Attack" | "Death")
 
 	local animation: Animation = self.animations[animationType]
 	if not animation then
-		if animationType ~= "Idle" then
+		if animationType == "Run" then
+			warn("Run animation not found for", self.creatureName, "Falling back to Walk animation.")
+			self:playAnimation("Walk") -- Fallback to Walk if Run is missing
+		elseif animationType ~= "Idle" then
 			warn("Animation", animationType, "not found for", self.creatureName, "Falling back to Idle animation.")
-		elseif animationType == "Idle" then
+			self:playAnimation("Idle") -- Fallback to Idle for other missing animations
+		else
+			warn("Idle animation not found for", self.creatureName, "Stopping all animations.")
 			self:stopAnimation("All") -- Stop all animations if Idle is missing
 		end
 		return
@@ -297,7 +310,7 @@ function NPC:playAnimation(animationType: "Idle" | "Walk" | "Attack" | "Death")
     print("Now playing animation", animationType, "for", self.creatureName)
 end
 
-function NPC:stopAnimation(animationType: "Idle" | "Walk" | "Attack" | "Death" | "All")
+function NPC:stopAnimation(animationType: animationType | "All")
     if animationType == "All" then
         for name, track in pairs(self.activeAnimations) do
             track:Stop()
@@ -316,7 +329,7 @@ end
 
 --------------------------------------------- MOVEMENT METHODS ---------------------------------------------
 function NPC:canMove(): boolean
-	return not self.despawning and self.humanoid.Health > 0 and not self.model:GetAttribute("UnderPetrificus")
+	return self.model.Parent and self.humanoid.Health > 0 and not self.model:GetAttribute("UnderPetrificus")
 end
 
 -- @return speed of the creature. WARNING: This function can return 0, which must be accounted for in any calculations!
@@ -410,17 +423,17 @@ function NPC:moveToPoint(pos: Vector3): number?
 			-- Frankly this is a mess, but MoveToFinished is choppy resulting in stuttered movement
 			-- Also this should ideally be on the client
 			local MoveToFinished = false
-			local ListenConn
-			ListenConn = self.humanoid.MoveToFinished:connect(function()
-				ListenConn:Disconnect()
+			local listenConn
+			listenConn = self.humanoid.MoveToFinished:connect(function()
+				listenConn:Disconnect()
 				MoveToFinished = true
 			end)
 
 			while MoveToFinished == false do
 				local wpDistance = (self.humanoidRootPart.Position - waypoint.Position).Magnitude
-				local distFactor = 3.3
+				local distFactor = self.creatureName == "Dementor" and 7.2 or 3.3 -- Dementors are tall and need more distance. This is hacky but works for now. It will need to be expanded/adjusted if more tall creatures are added
 				if wpDistance <= distFactor then
-					ListenConn:Disconnect()
+					listenConn:Disconnect()
 					break
 				end
 				RunService.Heartbeat:Wait()

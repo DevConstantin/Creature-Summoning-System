@@ -10,6 +10,7 @@ local ZoneModule = require(ReplicatedStorage.RSModules.Zone)
 local creatures = ServerStorage.Creatures
 
 local summonSystem = workspace.CreatureSummonSystem
+local summonedCreaturesFolder: Folder = workspace.SummonedCreatures
 local summonBriefcase: BasePart = summonSystem.CreatureSpawner
 local targetSpawn: BasePart = summonSystem.CreatureSpawn
 local creatureZoneContainer: Folder | BasePart = summonSystem.CreatureZone
@@ -129,14 +130,14 @@ local function summonRequested(player, creatureType: string)
 			warn("Failed to get a creature model for creatureType:", creatureType)
 			return
 		end
-		local creature = CreatureModule.spawn(creatureModelTemplate, targetSpawn.CFrame, true, true)
+		local creature = CreatureModule.spawn(creatureModelTemplate, summonedCreaturesFolder, targetSpawn.CFrame, true, true)
 		activeCreatures[creature] = creature.model -- Store reference to the creature class and model
 
 		task.wait(MOVEMENT_DELAY)
 
 		-- Placeholder roaming behavior
 		for i = 1, 1000 do
-			if not creature.model or not creature.model.Parent then
+			if not creature:canMove() or creature.despawning then
 				break
 			end
 			local targetRoamArea = creatureType == "Pixie" and workspace.PixieRoamArea or creatureZone
@@ -215,12 +216,19 @@ local function setupCreature(creature: Model)
 	end
 end
 
+-- Update the ActiveCreatureCount attribute on the summonedCreaturesFolder when a creature is added or removed. Efficient way to keep this updated for clients.
+local function updateCreaturesAttribute()
+	summonedCreaturesFolder:SetAttribute("SummonCount", #summonedCreaturesFolder:GetChildren())
+end
+
 --- // MAIN
 
 for _, creature in ipairs(creatures:GetChildren()) do
 	setupCreature(creature)
 end
 
+summonedCreaturesFolder.ChildAdded:Connect(updateCreaturesAttribute)
+summonedCreaturesFolder.ChildRemoved:Connect(updateCreaturesAttribute)
 creatureSummonEvents.SummonCreature.OnServerEvent:Connect(summonRequested)
 creatureSummonEvents.RemoveCreature.OnServerEvent:Connect(despawnRequested)
 summonBriefcase.ProximityPrompt.Triggered:Connect(suitcaseTriggered)
