@@ -10,7 +10,6 @@ local summonUI = script.Parent
 local mainFrame = summonUI.MainFrame
 local summonFrame = mainFrame.CreatureSpawnFrame
 local creatureButtonTemplate = mainFrame.CreatureButton
-local limitText = mainFrame.LimitHint -- Text label for the currently selected creature's limit
 local maxCreaturesHint = mainFrame.MaxCreaturesHint -- Text label for the global max creatures
 local buttonFrame = mainFrame.CreatureSelectionFrame
 
@@ -53,10 +52,6 @@ local function updateButtonLimitText(button: TextButton, applyUnderline: boolean
 
 	-- Apply an underline to the creature's name, used when selecting a creature in the UI
 	local creatureName = button:GetAttribute("Name")
-	if applyUnderline then
-		creatureName = "<u>" .. creatureName .. "</u>"
-	end
-
 	-- Apply limit text
 	local currentCount = 0
 	for _, creatureModel in ipairs(summonedCreatures:GetChildren()) do
@@ -65,6 +60,10 @@ local function updateButtonLimitText(button: TextButton, applyUnderline: boolean
 		end
 	end
 	local limit = creatureList and creatureList[creatureName] or 0
+
+	if applyUnderline then
+		creatureName = "<u>" .. creatureName .. "</u>" 	-- Must be run after retrieving the limit, <u> tags are used for underlining
+	end
 	button.TextLabel.Text = string.format("%s (%d / %d)", creatureName, currentCount, limit)
 end
 
@@ -84,10 +83,8 @@ local function createCreatureButton(name: string, limit: number)
 
 		previousSelected = button
 		currentCreature = name
-		updateButtonLimitText(button, button.TextLabel.Text == name) -- I don't even know what this equality test does
-
-		limitText.Text = name .. " Limit: " .. limit
-
+		print(string.find(button.TextLabel.Text, name))
+		updateButtonLimitText(button, string.find(button.TextLabel.Text, name))
 		clickSound:Play()
 	end)
 
