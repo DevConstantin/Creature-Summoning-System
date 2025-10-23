@@ -3,8 +3,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 --- // OBJECTS
-
+local localPlayer: Player = game.Players.LocalPlayer
+local CreatureSummoningService = require(ReplicatedStorage.RSModules.CreatureSummoningService)
 local summonedCreatures: Folder = workspace.SummonedCreatures -- Folder containing all currently summoned creatures
+local messageGUI: ScreenGui = script.Parent.Parent:FindFirstChild("MessageGui")
+local ClientMessageModule: ModuleScript = messageGUI and require(messageGUI:FindFirstChild("ClientSideMsgModule"))
 
 local summonUI = script.Parent
 local mainFrame = summonUI.MainFrame
@@ -29,7 +32,7 @@ local frameVisibilityTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.
 
 --- // VARIABLES
 local INITIAL_POS = mainFrame.Position
-local CLOSED_POS = UDim2.new(1.5, 0, INITIAL_POS.Y.Scale, 0)
+local CLOSED_POS = UDim2.fromScale(1.5, INITIAL_POS.Y.Scale)
 local initialized = false
 local creatureList = nil -- Table of creature names and their limits, received from the server on initialization
 local previousSelected = nil
@@ -43,25 +46,17 @@ local function tweenVisibility()
 		:Play()
 end
 
-local function canRequest(): boolean
-	return currentCreature ~= nil and typeof(currentCreature) == "string"
-end
-
 local function updateButtonLimitText(button: TextButton, applyUnderline: boolean)
 	if not button:IsA("TextButton") then return end
 
 	-- Apply an underline to the creature's name, used when selecting a creature in the UI
 	local creatureName = button:GetAttribute("Name")
 	-- Apply limit text
-	local currentCount = 0
-	for _, creatureModel in ipairs(summonedCreatures:GetChildren()) do
-		if creatureModel.Name == creatureName then
-			currentCount += 1
-		end
-	end
+	local currentCount = CreatureSummoningService.getCreatureCount(creatureName)
 	local limit = creatureList and creatureList[creatureName] or 0
 
-	if applyUnderline then
+	-- This is a bit hacky, but it works for now for keeping the underline when re-selecting the same button
+	if applyUnderline or (button == previousSelected and applyUnderline ~= false) then
 		creatureName = "<u>" .. creatureName .. "</u>" 	-- Must be run after retrieving the limit, <u> tags are used for underlining
 	end
 	button.TextLabel.Text = string.format("%s (%d / %d)", creatureName, currentCount, limit)
@@ -78,7 +73,7 @@ local function createCreatureButton(name: string, limit: number)
 		if previousSelected and previousSelected ~= button then
 			print("Restoring previous button (" .. previousSelected.TextLabel.Text .. ") text.")
 			previousSelected.TextLabel.Text = previousSelected:GetAttribute("Name")
-			updateButtonLimitText(previousSelected)
+			updateButtonLimitText(previousSelected, false)
 		end
 
 		previousSelected = button
@@ -124,7 +119,11 @@ local function toggleUI(_creatureList)
 end
 
 local function requestCreature()
-	if not canRequest() then
+	local canSummon, reason = CreatureSummoningService.canSummonCreature(localPlayer, currentCreature, creatureList)
+	if not canSummon then
+		if reason and ClientMessageModule then
+			ClientMessageModule.sendWarning(reason)
+		end
 		return
 	end
 	hoverSound:Play()
@@ -133,7 +132,10 @@ local function requestCreature()
 end
 
 local function despawnCreature()
-	if not canRequest() then
+	if not CreatureSummoningService.isGamekeeper(localPlayer) then
+		if ClientMessageModule then
+			ClientMessageModule.sendWarning("Only the Care of Magical Creatures instructor can despawn creatures.")
+		end
 		return
 	end
 	hoverSound:Play()

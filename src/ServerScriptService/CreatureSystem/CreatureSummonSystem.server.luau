@@ -6,7 +6,10 @@ local PhysicsService = game:GetService("PhysicsService")
 --- // OBJECTS
 local CreatureModule = require(script.Parent.Creature)
 local CreatureStats = require(script.Parent.CreatureStats)
+local CreatureSummoningService = require(ReplicatedStorage.RSModules.CreatureSummoningService)
 local ZoneModule = require(ReplicatedStorage.RSModules.Zone)
+local MessageModule =ReplicatedStorage.RSModules:FindFirstChild("MessageModule")
+MessageModule = MessageModule and require(MessageModule)
 local creatures = ServerStorage.Creatures
 
 local summonSystem = workspace.CreatureSummonSystem
@@ -28,46 +31,6 @@ local activeCreatures = {} -- Table to hold references for creature classes & cr
 local creaturesList = {} -- Dictionary of creatures and their limits, sent to clients
 
 --- // FUNCTIONS
--- Must be updated for WOS
-local function isGamekeeper(player)
-	return true
-end
-
-local function canSummon(player, creatureType: string): boolean
-	if not isGamekeeper(player) then
-		return false, "Only the Care of Magical Creatures instructor to summon creatures."
-	end
-
-	if not creatureType or typeof(creatureType) ~= "string" then
-		return false, "Invalid creature type."
-	end
-
-	-- Check against the global max creatures
-	-- Skipped if MAX_CREATURES is 0 or nil
-	if MAX_CREATURES and MAX_CREATURES > 0 then
-		if #summonedCreaturesFolder:GetChildren() >= MAX_CREATURES then
-			return false, "Maximum number of creatures reached."
-		end
-	end
-
-	-- Check against the creature's summon cap
-	local limit = creaturesList[creatureType]
-	if limit then
-		local activeNum = 0
-		for creature, creatureModel in pairs(activeCreatures) do
-			if creatureModel.Name == creatureType then
-				activeNum += 1
-			end
-		end
-		if activeNum < limit then
-			return true
-		end
-	else
-		warn("Failed to get a creature summon limit for", creatureType)
-		return false
-	end
-	return false, creatureType .. " limit reached."
-end
 
 -- Function to despawn all creatures
 local function despawnCreatures()
@@ -83,7 +46,8 @@ local function despawnCreatures()
 end
 
 local function despawnRequested(player, creatureType: string)
-	if not isGamekeeper(player) then
+	local isGamekeeper, reason = CreatureSummoningService.isGamekeeper(player)
+	if not isGamekeeper then
 		warn(player, "is not the gamekeeper but attempted to despawn a creature! Possible exploit?")
 		return
 	end
@@ -118,8 +82,8 @@ local function despawnRequested(player, creatureType: string)
 end
 
 local function summonRequested(player, creatureType: string)
-	local _canSummon, reason = canSummon(player, creatureType)
-	if _canSummon then
+	local canSummon, reason = CreatureSummoningService.canSummonCreature(player, creatureType, creaturesList)
+	if canSummon then
 		local creatureModelTemplate = creatures:FindFirstChild(creatureType)
 		if not creatureModelTemplate then
 			warn("Failed to get a creature model for creatureType:", creatureType)
@@ -141,17 +105,24 @@ local function summonRequested(player, creatureType: string)
 		end
 	else
 		warn("Unable to summon", creatureType, "Reason:", reason)
+		if reason and MessageModule then
+			MessageModule.sendWarning(player, reason)
+		end
 	end
 end
 
 -- Open creature summon GUI for the player, if they are the gamekeeper
 local function suitcaseTriggered(player)
-	if isGamekeeper(player) then
+	local isGamekeeper, _ = CreatureSummoningService.isGamekeeper(player, true)
+	if isGamekeeper then
 		print(creaturesList)
 		summonBriefcase.Sparkles:Emit(10)
 		creatureSummonEvents.SummonCreature:FireClient(player, creaturesList)
 	else
 		warn("Only the Care of Magical Creatures instructor can use this.")
+		if MessageModule then
+			MessageModule.sendWarning(player, "Only the Care of Magical Creatures instructor can use this.")
+		end
 	end
 end
 
@@ -185,7 +156,6 @@ local function setupCreature(creature: Model)
 		creatureStats = CreatureStats["Default"]
 	end
 
-	-- Apply stats to the creature model
 	local summonLimit = creatureStats.summonCap
 	if summonLimit and summonLimit > 0 then
 		creaturesList[creature.Name] = summonLimit
@@ -211,10 +181,6 @@ local function setupCreature(creature: Model)
 	end
 end
 
--- Update the ActiveCreatureCount attribute on the summonedCreaturesFolder when a creature is added or removed. Efficient way to keep this updated for clients.
-local function updateCreaturesAttribute()
-	summonedCreaturesFolder:SetAttribute("SummonCount", #summonedCreaturesFolder:GetChildren())
-end
 
 --- // MAIN
 
@@ -222,8 +188,6 @@ for _, creature in ipairs(creatures:GetChildren()) do
 	setupCreature(creature)
 end
 
-summonedCreaturesFolder.ChildAdded:Connect(updateCreaturesAttribute)
-summonedCreaturesFolder.ChildRemoved:Connect(updateCreaturesAttribute)
 creatureSummonEvents.SummonCreature.OnServerEvent:Connect(summonRequested)
 creatureSummonEvents.RemoveCreature.OnServerEvent:Connect(despawnRequested)
 summonBriefcase.ProximityPrompt.Triggered:Connect(suitcaseTriggered)
