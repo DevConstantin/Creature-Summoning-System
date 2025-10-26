@@ -46,6 +46,7 @@ end
 -- @param spawnCFrame: Where the NPC will spawn
 -- @param useFF: Optional, add a force field and make the creature immortal
 local function spawnNPC(model, container: Folder, spawnCFrame: CFrame, useFF: boolean)
+	model:SetAttribute("Spawning", true)
 	local creatureName = model.Name
 	model:PivotTo(
 		spawnCFrame + Vector3.new(math.random(-SPAWN_OFFSET, SPAWN_OFFSET), 0, math.random(-SPAWN_OFFSET, SPAWN_OFFSET))
@@ -85,6 +86,13 @@ local function spawnNPC(model, container: Folder, spawnCFrame: CFrame, useFF: bo
 			part.CollisionGroup = creatureName
 		end
 	end
+
+	-- Cleanup spawning attribute after tween completes
+	task.delay(visibilityTweenInfo.Time + 0.1, function()
+		if model and model.Parent then
+			model:SetAttribute("Spawning", nil)
+		end
+	end)
 	model.Parent = container
 end
 
@@ -523,6 +531,7 @@ end
 function NPC:despawn()
 	self.despawning = true
 	if self.model and self.model.Parent then
+		self.model:SetAttribute("Despawning", true)
 		self:emitSparkles()
 		for _, part in ipairs(self.model:GetDescendants()) do
 			if not part:IsA("BasePart") or part.Transparency == 1 then
