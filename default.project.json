@@ -13,10 +13,28 @@
      "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
       "$ignoreUnknownInstances": true,
-      "$path": "src/ReplicatedStorage"
+      "$path": "src/ReplicatedStorage",
+
+      "Configurations": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true,
+        "$path": "src/ReplicatedStorage/Configurations",
+
+        "CreatureSystemsConfig": {
+          "$className": "Configuration",
+          "$ignoreUnknownInstances": true,
+          "$path": "src/ReplicatedStorage/Configurations",
+          "$properties": {
+            "Attributes": {
+              "Foo": {"Bool": true},
+              "Bar": {"Vector3": [1.0, 2.0, 3.0]}
+            }
+          } 
+        }
+      }
     },
 
-     "StarterGui": {
+    "StarterGui": {
       "$className": "StarterGui",
       "$ignoreUnknownInstances": true,
       "$path": "src/StarterGui"

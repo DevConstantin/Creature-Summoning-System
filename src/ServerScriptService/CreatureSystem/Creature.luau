@@ -29,10 +29,56 @@ local SPAWN_OFFSET = 3
 
 local visibilityTweenInfo = TweenInfo.new(2, Enum.EasingStyle.Exponential, Enum.EasingDirection.In)
 
+local activeCreatures = {} -- Table to hold references for creature classes & creatures that are active in the game world
+
 --- // TYPES
 type Zone = {}
-type AnimationType = "Idle" | "Walk" | "Run" | "Attack" | "Death"
+export type AnimationType = "Idle" | "Walk" | "Run" | "Attack" | "Death"
 type SoundType = AnimationType | "Scream"
+export type NPC = {
+	model: Model,
+	head: BasePart?,
+	humanoid: Humanoid,
+	humanoidRootPart: BasePart,
+	rootPart: BasePart,
+	creatureName: string,
+	isAggressive: boolean?,
+	aggression: number,
+	fear: number,
+	attackRange: number,
+	biteRange: number,
+	speedMin: number,
+	speedMax: number,
+	moveToNearby: boolean,
+	damagePart: BasePart?,
+	trackTarget: Model?,
+	isClassSummon: boolean,
+
+	targetDestination: Vector3?,
+
+	connections: { RBXScriptConnection },
+	animations: { [string]: Animation },
+	loadedAnimations: { [string]: AnimationTrack },
+	activeAnimations: { [string]: AnimationTrack },
+	sounds: { [string]: Sound },
+	despawning: boolean,
+
+	emitSparkles: () -> (),
+	playSound: (SoundType) -> (),
+	stopSound: (SoundType | "All") -> (),
+	getPosition: () -> (Vector3?),
+	playAnimation: (AnimationType) -> (),
+	stopAnimation: (AnimationType | "All") -> (),
+	canMove: () -> (boolean),
+	getSpeed: () -> (number),
+	updateSpeed: (number) -> (),
+	moveToPoint: (Vector3) -> (number?),
+	moveToNearbyTarget: (Vector3, Zone?) -> (),
+	roam: (Folder | Zone) -> (number?),
+	trackPlayer: (Player) -> (),
+	damageNearby: () -> (),
+	despawn: () -> (),
+}
 
 local function createWeld(p1, p2)
 	local weld = Instance.new("WeldConstraint")
@@ -96,125 +142,140 @@ local function spawnNPC(model, container: Folder, spawnCFrame: CFrame, useFF: bo
 	model.Parent = container
 end
 
+function NPC.getActiveCreatures(): { Model: NPC }
+	return activeCreatures
+end
+
 -- Main spawn function for an NPC
 -- @param isClassSummon: Optional, if the creature is being summoned durring a COMC class, it will not attack the COMC instructor
-function NPC.spawn(npcModelTemplate, container: Folder, spawnLocation: CFrame | Vector3, useForceField: boolean?, isClassSummon: boolean?)
-	if typeof(spawnLocation) == Vector3 then
-		spawnLocation = CFrame.new(spawnLocation)
-	end
-
-	local self = setmetatable({}, NPC)
-
-	local model = npcModelTemplate:Clone()
-	local creatureName = npcModelTemplate.Name
-	self.humanoidRootPart = model.HumanoidRootPart
-	local humanoid = model.Humanoid
-
-	-- Basic info
-	self.model = model
-	self.head = model:FindFirstChild("Head") or model:FindFirstChild("HeadPart")
-	self.humanoid = humanoid
-	self.rootPart = model:WaitForChild("HumanoidRootPart")
-	self.creatureName = creatureName
-	self.despawning = false -- Flag to prevent actions such as movement when despawning
-
-	-- Initialize creature stats
-	local stats = creatureStats[creatureName] or creatureStats["Default"]
-	self.isAggressive = npcModelTemplate:GetAttribute("Aggressive")
-	self.aggression = stats.aggression or 0
-	self.fear = stats.fear or 0
-	self.attackRange = stats.attackRange or 45
-	self.biteRange = stats.biteRange or 10
-	self.speedMin = stats.speedMin or 16
-	self.speedMax = stats.speedMax or 16
-	self.moveToNearby = stats.moveToNearby or false
-	self.damagePart = model:FindFirstChild("DamagePart") -- The part that will be used to check for players to damage
-	self.trackTarget = nil
-	self.isClassSummon = isClassSummon or false
-
-	self.targetDestination = nil
-
-	-- Tables
-	self.connections = {}
-	self.animations = {} -- Raw Animation objects
-	self.loadedAnimations = {} -- Cached AnimationTracks
-	self.activeAnimations = {} -- Currently playing tracks
-
-	-- Sounds may be parented to different parts for better emission control
-	self.sounds = {}
-	for _, sound in ipairs(model:GetDescendants()) do
-		if sound:IsA("Sound") then
-			self.sounds[sound.Name] = sound
+-- @return: NPC class
+function NPC.spawn(npcModelTemplate, container: Folder, spawnLocation: CFrame | Vector3, useForceField: boolean?, isClassSummon: boolean?): NPC
+	local success, result = pcall(function()
+		if typeof(spawnLocation) == Vector3 then
+			spawnLocation = CFrame.new(spawnLocation)
 		end
-	end
 
-	local animsFolder = npcModelTemplate:FindFirstChild("Animations")
-	if animsFolder then
-		for _, animation in ipairs(animsFolder:GetChildren()) do
-			self.animations[animation.Name] = animation
+		local self = setmetatable({}, NPC)
+
+		local model = npcModelTemplate:Clone()
+		local creatureName = npcModelTemplate.Name
+		self.humanoidRootPart = model.HumanoidRootPart
+		local humanoid = model.Humanoid
+
+		-- Basic info
+		self.model = model
+		self.head = model:FindFirstChild("Head") or model:FindFirstChild("HeadPart")
+		self.humanoid = humanoid
+		self.rootPart = model:WaitForChild("HumanoidRootPart")
+		self.creatureName = creatureName
+		self.despawning = false -- Flag to prevent actions such as movement when despawning
+
+		-- Initialize creature stats
+		local stats = creatureStats[creatureName] or creatureStats["Default"]
+		self.isAggressive = npcModelTemplate:GetAttribute("Aggressive")
+		self.aggression = stats.aggression or 0
+		self.fear = stats.fear or 0
+		self.attackRange = stats.attackRange or 45
+		self.biteRange = stats.biteRange or 10
+		self.speedMin = stats.speedMin or 16
+		self.speedMax = stats.speedMax or 16
+		self.moveToNearby = stats.moveToNearby or false
+		self.damagePart = model:FindFirstChild("DamagePart") -- The part that will be used to check for players to damage
+		self.trackTarget = nil
+		self.isClassSummon = isClassSummon or false
+
+		self.targetDestination = nil
+
+		-- Tables
+		self.connections = {}
+		self.animations = {} -- Raw Animation objects
+		self.loadedAnimations = {} -- Cached AnimationTracks
+		self.activeAnimations = {} -- Currently playing tracks
+
+		-- Sounds may be parented to different parts for better emission control
+		self.sounds = {}
+		for _, sound in ipairs(model:GetDescendants()) do
+			if sound:IsA("Sound") then
+				self.sounds[sound.Name] = sound
+			end
 		end
+
+		local animsFolder = npcModelTemplate:FindFirstChild("Animations")
+		if animsFolder then
+			for _, animation in ipairs(animsFolder:GetChildren()) do
+				self.animations[animation.Name] = animation
+			end
+		else
+			warn("Creature.luau | Failed to find animations folder within", npcModelTemplate)
+		end
+
+		-- For whatever reason, the hippogriff walk animation will not play unless set here first
+
+		self:playAnimation("Walk") -- This must be run first, or the walk animation will not play later. Don't know why. Will fall back to idle if no walk animation found
+		self:playSound("Idle")
+		if not self.model:FindFirstChild("IsFlying") then
+			humanoid.WalkSpeed = math.random(self.speedMin, self.speedMax)
+
+			local hasWalk = self.animations["Walk"] ~= nil
+			if hasWalk then
+				-- Store connection for cleanup
+				table.insert(self.connections, humanoid.Running:Connect(function(speed)
+					if math.floor(speed) > 0 then
+						print("Creature", self.creatureName, "is moving at speed", speed)
+						self:playAnimation("Walk")
+						self:playSound("Walk")
+					else
+						print("Creature", self.creatureName, "has stopped moving.")
+						self:stopAnimation("Walk")
+						self:playAnimation("Idle")
+						self:playSound("Idle")
+					end
+				end))
+			end
+		end
+
+		spawnNPC(model, container, spawnLocation, useForceField)
+		self:emitSparkles()
+		activeCreatures[model] = self -- Store reference to active creature class
+
+		-- Run aggression functionality
+		-- Currently DISABLED, as this is not optimized
+		-- if  then
+		-- 	local aggroConnect = nil
+		-- 	local cooldown = false
+
+		-- 	local speedT, speedInterval = 0, 1.7
+
+		-- 	aggroConnect = RunService.Stepped:Connect(function(dt)
+		-- 		if cooldown then
+		-- 			return
+		-- 		end
+		-- 		local destinationEta = self:moveToNearbyTarget(Vector3.new(56.783, 26.334, -24.727))
+		-- 		--if destinationEta then
+		-- 		--	cooldown = true
+		-- 		--	task.wait(destinationEta)
+		-- 		--	cooldown = false
+		-- 		--end
+
+		-- 		if (os.clock() - speedT) < speedInterval then
+		-- 			return
+		-- 		end
+		-- 		speedT = os.clock()
+		-- 		self:updateSpeed(math.random(self.speedMin, self.speedMax))
+		-- 	end)
+
+		-- 	table.insert(self.connections, aggroConnect)
+		-- end
+
+		return self
+	end)
+
+	if not success then
+		warn("Creature.luau | Failed to spawn NPC:", result)
+		return nil
 	else
-		warn("Failed to find animations folder within", npcModelTemplate)
+		return result
 	end
-
-	-- For whatever reason, the hippogriff walk animation will not play unless set here first
-
-	self:playAnimation("Walk") -- This must be run first, or the walk animation will not play later. Don't know why. Will fall back to idle if no walk animation found
-	self:playSound("Idle")
-	if not self.model:FindFirstChild("IsFlying") then
-		humanoid.WalkSpeed = math.random(self.speedMin, self.speedMax)
-
-		local hasWalk = self.animations["Walk"] ~= nil
-		if hasWalk then
-			-- Store connection for cleanup
-			table.insert(self.connections, humanoid.Running:Connect(function(speed)
-				if math.floor(speed) > 0 then
-					print("Creature", self.creatureName, "is moving at speed", speed)
-					self:playAnimation("Walk")
-					self:playSound("Walk")
-				else
-					print("Creature", self.creatureName, "has stopped moving.")
-					self:stopAnimation("Walk")
-					self:playAnimation("Idle")
-					self:playSound("Idle")
-				end
-			end))
-		end
-	end
-
-	spawnNPC(model, container, spawnLocation, useForceField)
-	self:emitSparkles()
-
-	-- Run aggression functionality
-	-- Currently DISABLED, as this is not optimized
-	-- if  then
-	-- 	local aggroConnect = nil
-	-- 	local cooldown = false
-
-	-- 	local speedT, speedInterval = 0, 1.7
-
-	-- 	aggroConnect = RunService.Stepped:Connect(function(dt)
-	-- 		if cooldown then
-	-- 			return
-	-- 		end
-	-- 		local destinationEta = self:moveToNearbyTarget(Vector3.new(56.783, 26.334, -24.727))
-	-- 		--if destinationEta then
-	-- 		--	cooldown = true
-	-- 		--	task.wait(destinationEta)
-	-- 		--	cooldown = false
-	-- 		--end
-
-	-- 		if (os.clock() - speedT) < speedInterval then
-	-- 			return
-	-- 		end
-	-- 		speedT = os.clock()
-	-- 		self:updateSpeed(math.random(self.speedMin, self.speedMax))
-	-- 	end)
-
-	-- 	table.insert(self.connections, aggroConnect)
-	-- end
-
-	return self
 end
 
 ------------------------------------------------ EFFECT & SOUND METHODS ------------------------------------------------
@@ -227,7 +288,7 @@ function NPC:emitSparkles()
 		task.wait()
 		sparklesValue.Value:Emit(SUMMON_SPARKLE_AMOUNT)
 	else
-		warn("Failed to get sparkles for", self.model)
+		warn("Creature.luau | Failed to get sparkles for", self.model)
 	end
 end
 
@@ -291,7 +352,7 @@ function NPC:playAnimation(animationType: AnimationType)
 
     local animController = self.model:FindFirstChild("Rig") and self.model.Rig:FindFirstChild("AnimationController") or self.humanoid:FindFirstChild("Animator")
     if not animController then
-		warn("Failed to find AnimationController for", self.creatureName)
+		warn("Creature.luau | Failed to find AnimationController for", self.creatureName)
 		return
 	end
 
@@ -396,7 +457,7 @@ function NPC:moveToPoint(pos: Vector3): number?
 	end
 
 	if not pos then
-		warn("Missing pos value for moveTo function.")
+		warn("Creature.luau | Missing pos value for moveTo function.")
 		return nil
 	end
 
@@ -405,7 +466,7 @@ function NPC:moveToPoint(pos: Vector3): number?
 	local currentPos = self:getPosition()
 	local speed = self:getSpeed()
 	if speed <= 0 then
-		warn("Creature", self.creatureName, "has 0 speed! Cannot move.")
+		warn("Creature.luau |", self.creatureName, "has 0 speed! Cannot move.")
 		return nil
 	end
 
@@ -420,7 +481,7 @@ function NPC:moveToPoint(pos: Vector3): number?
 
 	-- Fallback: If pathfinding fails, move directly to the point
 	if not pathWaypoints or #pathWaypoints == 0 then
-		warn("Failed to get path waypoints for", self.creatureName, "from", currentPos, "to", pos)
+		warn("Creature.luau | Failed to get path waypoints for", self.creatureName, "from", currentPos, "to", pos)
 		self.humanoid:MoveTo(pos)
 		local travelTime = currentPos and (pos - currentPos).Magnitude / speed
 		print("Moving", self.creatureName, "to", pos, "from", currentPos, "Travel time:", travelTime)
@@ -469,7 +530,7 @@ end
 function NPC:moveToNearbyTarget(aggroOrigin: Vector3, zoneArea: Zone)
 	local currentPos = self:getPosition()
 	if not currentPos then
-		warn("Failed to get current position for the NPC!")
+		warn("Creature.luau | Failed to get current position for the NPC!")
 		return
 	end
 
@@ -496,14 +557,14 @@ function NPC:roam(roamArea: Folder | Zone): number?
 	if typeof(roamArea) == "Instance" and roamArea:IsA("Folder") then
 		local roamNodes = roamArea:GetChildren()
 		if #roamNodes == 0 then 
-			warn("Roam area", roamArea, "is missing destination nodes!")
+			warn("Creature.luau | Roam area", roamArea, "is missing destination nodes!")
 			return nil
 		end
 		targetPos = roamNodes[math.random(1, #roamNodes)].Position
 	elseif roamArea ~= nil then
 		targetPos = roamArea:getRandomPoint()
 	else
-		warn("You must provide either a roam zone object or table of nodes for NPC:roam function!")
+		warn("Creature.luau | You must provide either a roam zone object or table of nodes for NPC:roam function!")
 		return nil
 	end
 
@@ -520,36 +581,52 @@ end
 -- Method to damage a player near the NPC
 function NPC:damageNearby()
 	if not self.biteRange or not self.damagePart then
-		warn(self.creatureName, "cannot do damage! Missing:", self.biteRange, self.damagePart)
+		warn("Creature.luau | ", self.creatureName, "cannot do damage! Missing:", self.biteRange, self.damagePart)
 		return
 	end
+end
+
+--------------------------------------------- INTERACTION METHODS ---------------------------------------------
+
+-- Method to feed the creature
+function NPC:feed(player: Player)
+	print("Feeding creature", self.creatureName, "by player", player.Name)
+	-- Currently no feeding logic implemented
 end
 
 --------------------------------------------- DESPAWN METHOD ---------------------------------------------
 
 -- Method to respawn an NPC and disconnect all connections
 function NPC:despawn()
-	self.despawning = true
-	if self.model and self.model.Parent then
-		self.model:SetAttribute("Despawning", true)
-		self:emitSparkles()
-		for _, part in ipairs(self.model:GetDescendants()) do
-			if not part:IsA("BasePart") or part.Transparency == 1 then
-				continue
+	local success, result = pcall(function()
+		activeCreatures[self.model] = nil -- Remove reference to active creature class
+		self.despawning = true
+		if self.model and self.model.Parent then
+			self.model:SetAttribute("Despawning", true)
+			self:emitSparkles()
+			for _, part in ipairs(self.model:GetDescendants()) do
+				if not part:IsA("BasePart") or part.Transparency == 1 then
+					continue
+				end
+				TweenPlus:Create(part, visibilityTweenInfo, { Transparency = 1 }):Play()
 			end
-			TweenPlus:Create(part, visibilityTweenInfo, { Transparency = 1 }):Play()
+			Debris:AddItem(self.model, visibilityTweenInfo.Time)
 		end
-		Debris:AddItem(self.model, visibilityTweenInfo.Time)
-	end
 
-	for _, connection in ipairs(self.connections) do
-		connection:Disconnect()
+		for _, connection in ipairs(self.connections) do
+			connection:Disconnect()
+		end
+		table.clear(self.connections)
+		table.clear(self.loadedAnimations)
+		table.clear(self.activeAnimations)
+		table.clear(self.animations)
+		table.clear(self.sounds)
+	end)
+
+	if not success then
+		warn("Creature.luau | Failed to despawn NPC:", result)
+		Debris:AddItem(self.model, 0) -- Force cleanup
 	end
-	table.clear(self.connections)
-    table.clear(self.loadedAnimations)
-	table.clear(self.activeAnimations)
-	table.clear(self.animations)
-	table.clear(self.sounds)
 end
 
 return NPC
