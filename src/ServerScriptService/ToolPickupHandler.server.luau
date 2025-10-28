@@ -6,12 +6,12 @@
 -- RSModules.ShopModule2
 -- ServerStorage["Hearty Stew"]
 
--- // Services
+--- // SERVICES
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
--- // Objects
+--- // OBJECTS
 local shopModule2 = require(ReplicatedStorage.RSModules.ShopModule2)
 local msgModule = require(ReplicatedStorage.RSModules.MessageSystem)
 
@@ -19,18 +19,22 @@ local stewPots = workspace:FindFirstChild("StewPots")
 local tools: Folder = ServerStorage.Tools
 local stewTemplate = ServerStorage.Tools.Food["Hearty Stew"]
 
--- // Config
+--- // CONFIG
+local creatureConfig = ReplicatedStorage.Configurations.CreatureSystemsConfig
 local PURCHASE_TIME_LIMIT = 2 * 60
 local TAG_TOOL_PICKUP = "ToolPickup"
 local HOLD_DURATION = 0.3
+local MAX_ACTIVATION_DISTANCE = 7 -- Max proximity prompt activation distance
 
--- // Variables
+--- // VARIABLES
 local stewPurchases = {}
 
+--- // FUNCTIONS
 local function createPrompt(pickupPart: BasePart, itemName: string): ProximityPrompt
     local prompt = Instance.new("ProximityPrompt")
     prompt.ActionText = "Pick up " .. itemName
     prompt.HoldDuration = HOLD_DURATION
+    prompt.MaxActivationDistance = MAX_ACTIVATION_DISTANCE
     prompt.Parent = pickupPart
     return prompt
 end
@@ -97,6 +101,7 @@ local function initializeStewPot(pot: Model)
     end)
 end
 
+--- // MAIN
 for _, pickupPart: BasePart in ipairs(CollectionService:GetTagged(TAG_TOOL_PICKUP)) do
     initializePickupPart(pickupPart)
 end

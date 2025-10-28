@@ -129,7 +129,7 @@ local function feedCreature(input, gpe)
 		if feedingHighlight and feedingHighlight.Adornee then
 			local highlightedCreature: Model = feedingHighlight.Adornee :: Model
 			print("Feeding creature:", highlightedCreature.Name)
-            feedingEvent:FireServer(highlightedCreature)
+            feedingEvent:FireServer(highlightedCreature, feedingTool.Name)
 		end
 	end
 end

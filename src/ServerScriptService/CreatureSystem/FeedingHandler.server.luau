@@ -25,7 +25,7 @@ local function inProximity(player: Player, creatureModel: Model): boolean
     return distance <= FEEDING_RANGE_DEFAULT
 end
 
-local function onFeedCreature(player: Player, creatureModel: Model)
+local function onFeedCreature(player: Player, creatureModel: Model, feedingToolName: string)
     if not creatureModel or not creatureModel:IsDescendantOf(game.Workspace) then
         warn("Invalid creature model provided for feeding.")
         return
@@ -38,7 +38,7 @@ local function onFeedCreature(player: Player, creatureModel: Model)
         return
     end
 
-    creatureClass:feed(player)
+    creatureClass:feed(player, feedingToolName)
 end
 
 feedingEvent.OnServerEvent:Connect(onFeedCreature)

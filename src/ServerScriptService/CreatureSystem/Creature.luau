@@ -3,6 +3,9 @@
 -- Add "SelfCollisions" BoolValue to configure if the creature has collisions with itself (so pixies don't collide for instance)
 -- Add a "IsFlying" BoolValue to the creature if it's supposed to fly. AlignPosition and AlignOrientation will be set up by 'Utilities' module
 -- You can place sparkle FX (must be named 'Sparkles') anywhere in the NPC. Creature initialization will set up a "SparklesValue" object value to easily reference them
+-- Sounds can be parented to any part in the creature. Just make sure they are named correctly to match the sound types in the code (Idle, Walk, Run, Attack, Death, Scream, Eat, etc)
+-- Animations must be placed in an 'Animations' folder within the creature model. They must also be named correctly to match the animation types in the code (Idle, Walk, Run, Attack, Death, etc)
+-- Add head part named "Head" or "HeadPart" under creature model (for effects such as feeding hearts). The head part doesn't exist on all creatures, and must be added manually if needed. Will fall back to HRP if not found.
 
 local NPC = {}
 NPC.__index = NPC
@@ -23,18 +26,26 @@ local Pathfinding = require(ReplicatedStorage.RSModules.Pathfinding)
 local summonedCreatures: Folder = workspace.SummonedCreatures
 
 --- // CONFIG
+local creatureConfig = ReplicatedStorage.Configurations.CreatureSystemsConfig
 local SUMMON_SPARKLE_AMOUNT = 10
 local MOVEMENT_DELAY = 3 -- Related to sparkle life length
 local SPAWN_OFFSET = 3
+local HEARTS_FX_TEMPLATE = ReplicatedStorage.Assets.Particles.HeartsFX
 
 local visibilityTweenInfo = TweenInfo.new(2, Enum.EasingStyle.Exponential, Enum.EasingDirection.In)
 
 local activeCreatures = {} -- Table to hold references for creature classes & creatures that are active in the game world
+local eatingSoundIDs = {
+	"rbxassetid://138291345760809",
+	"rbxassetid://80466416349727",
+	"rbxassetid://118489094475896",
+	"rbxassetid://71939000067014",
+}
 
 --- // TYPES
 type Zone = {}
 export type AnimationType = "Idle" | "Walk" | "Run" | "Attack" | "Death"
-type SoundType = AnimationType | "Scream"
+type SoundType = AnimationType | "Scream" | "Eat"
 export type NPC = {
 	model: Model,
 	head: BasePart?,
@@ -161,12 +172,17 @@ function NPC.spawn(npcModelTemplate, container: Folder, spawnLocation: CFrame | 
 		local creatureName = npcModelTemplate.Name
 		self.humanoidRootPart = model.HumanoidRootPart
 		local humanoid = model.Humanoid
+		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None -- Hide nameplates
 
 		-- Basic info
 		self.model = model
-		self.head = model:FindFirstChild("Head") or model:FindFirstChild("HeadPart")
 		self.humanoid = humanoid
 		self.rootPart = model:WaitForChild("HumanoidRootPart")
+		self.head = model:FindFirstChild("Head") or model:FindFirstChild("HeadPart")
+		if not self.head then
+			warn("Creature.luau | Failed to find head part for", creatureName)
+			self.head = self.humanoidRootPart -- Fallback to HRP
+		end
 		self.creatureName = creatureName
 		self.despawning = false -- Flag to prevent actions such as movement when despawning
 
@@ -221,11 +237,9 @@ function NPC.spawn(npcModelTemplate, container: Folder, spawnLocation: CFrame | 
 				-- Store connection for cleanup
 				table.insert(self.connections, humanoid.Running:Connect(function(speed)
 					if math.floor(speed) > 0 then
-						print("Creature", self.creatureName, "is moving at speed", speed)
 						self:playAnimation("Walk")
 						self:playSound("Walk")
 					else
-						print("Creature", self.creatureName, "has stopped moving.")
 						self:stopAnimation("Walk")
 						self:playAnimation("Idle")
 						self:playSound("Idle")
@@ -292,8 +306,9 @@ function NPC:emitSparkles()
 	end
 end
 
-function NPC:playSound(soundType: SoundType)
-	print("Sound play requested:", soundType, "on", self.creatureName)
+-- @return: Length of sound played, or nil if sound failed to play
+function NPC:playSound(soundType: SoundType): number?
+	--print("Sound play requested:", soundType, "on", self.creatureName)
 	if not soundType then
 		warn("No sound type provided for playSound function on", self.creatureName)
 		return
@@ -301,7 +316,7 @@ function NPC:playSound(soundType: SoundType)
 
 	local sound = self.sounds[soundType]
 	if not sound then
-		print("Sound", soundType, "not found on", self.creatureName, "Falling back to Idle sound.")
+		--print("Sound", soundType, "not found on", self.creatureName, "Falling back to Idle sound.")
 		sound = self.sounds["Idle"] -- Fallback to idle sound
 		if not sound then
 			-- print("Failed to find fallback Idle sound on", self.creatureName)
@@ -310,10 +325,17 @@ function NPC:playSound(soundType: SoundType)
 	end
 
 	if not sound.IsPlaying then
+		if soundType == "Eat" then
+			-- Randomize eating sound
+			local randomIndex = math.random(1, #eatingSoundIDs)
+			sound.SoundId = eatingSoundIDs[randomIndex]
+		end
 		sound:Play()
-		print("Playing sound:", soundType, "on", self.creatureName)
+		return sound.TimeLength
+		--print("Playing sound:", soundType, "on", self.creatureName)
 	else
-		print("Sound", soundType, "is already playing on", self.creatureName)
+		--print("Sound", soundType, "is already playing on", self.creatureName)
+		return
 	end
 end
 
@@ -352,20 +374,20 @@ function NPC:playAnimation(animationType: AnimationType)
 
     local animController = self.model:FindFirstChild("Rig") and self.model.Rig:FindFirstChild("AnimationController") or self.humanoid:FindFirstChild("Animator")
     if not animController then
-		warn("Creature.luau | Failed to find AnimationController for", self.creatureName)
+		--warn("Creature.luau | Failed to find AnimationController for", self.creatureName)
 		return
 	end
 
 	local animation: Animation = self.animations[animationType]
 	if not animation then
 		if animationType == "Run" then
-			warn("Run animation not found for", self.creatureName, "Falling back to Walk animation.")
+			--warn("Run animation not found for", self.creatureName, "Falling back to Walk animation.")
 			self:playAnimation("Walk") -- Fallback to Walk if Run is missing
 		elseif animationType ~= "Idle" then
-			warn("Animation", animationType, "not found for", self.creatureName, "Falling back to Idle animation.")
+			--warn("Animation", animationType, "not found for", self.creatureName, "Falling back to Idle animation.")
 			self:playAnimation("Idle") -- Fallback to Idle for other missing animations
 		else
-			warn("Idle animation not found for", self.creatureName, "Stopping all animations.")
+			--warn("Idle animation not found for", self.creatureName, "Stopping all animations.")
 			self:stopAnimation("All") -- Stop all animations if Idle is missing
 		end
 		return
@@ -376,14 +398,14 @@ function NPC:playAnimation(animationType: AnimationType)
         local loadedAnim = animController:LoadAnimation(animation)
         loadedAnim.Name = animationType
         self.loadedAnimations[animationType] = loadedAnim
-		print("Play animation function:", animationType, "cached for", self.creatureName)
+	--	print("Play animation function:", animationType, "cached for", self.creatureName)
     end
 
     local track = self.loadedAnimations[animationType]
     track:Play()
     self.activeAnimations[animationType] = track
 
-    print("Now playing animation", animationType, "for", self.creatureName)
+    --print("Now playing animation", animationType, "for", self.creatureName)
 end
 
 function NPC:stopAnimation(animationType: AnimationType | "All")
@@ -484,7 +506,7 @@ function NPC:moveToPoint(pos: Vector3): number?
 		warn("Creature.luau | Failed to get path waypoints for", self.creatureName, "from", currentPos, "to", pos)
 		self.humanoid:MoveTo(pos)
 		local travelTime = currentPos and (pos - currentPos).Magnitude / speed
-		print("Moving", self.creatureName, "to", pos, "from", currentPos, "Travel time:", travelTime)
+		--print("Moving", self.creatureName, "to", pos, "from", currentPos, "Travel time:", travelTime)
 		return travelTime
 	end
 
@@ -494,7 +516,7 @@ function NPC:moveToPoint(pos: Vector3): number?
 				break
 			end
 			self.humanoid:MoveTo(waypoint.Position)
-			print("Moving to waypoint ", num, "at", waypoint.Position, "for", self.creatureName)
+			--print("Moving to waypoint ", num, "at", waypoint.Position, "for", self.creatureName)
 
 			-- Frankly this is a mess, but MoveToFinished is choppy resulting in stuttered movement
 			-- Also this should ideally be on the client
@@ -556,7 +578,7 @@ function NPC:roam(roamArea: Folder | Zone): number?
 	local targetPos = nil
 	if typeof(roamArea) == "Instance" and roamArea:IsA("Folder") then
 		local roamNodes = roamArea:GetChildren()
-		if #roamNodes == 0 then 
+		if #roamNodes == 0 then
 			warn("Creature.luau | Roam area", roamArea, "is missing destination nodes!")
 			return nil
 		end
@@ -589,9 +611,39 @@ end
 --------------------------------------------- INTERACTION METHODS ---------------------------------------------
 
 -- Method to feed the creature
-function NPC:feed(player: Player)
+function NPC:feed(player: Player, feedingItemName: string)
+	if self.model:GetAttribute("CanFeed") == false then
+		print("Creature.luau |", self.creatureName, "cannot be fed!")
+		return
+	end
+
 	print("Feeding creature", self.creatureName, "by player", player.Name)
-	-- Currently no feeding logic implemented
+	-- Remove feeding tool from player inventory before playing effects
+	local char = player.Character
+	local backpack = player:FindFirstChild("Backpack")
+
+	local feedingTool = char and char:FindFirstChild(feedingItemName) or backpack and backpack:FindFirstChild(feedingItemName)
+	if feedingTool then
+		Debris:AddItem(feedingTool, 0) -- Remove the tool immediately
+	else
+		warn("Creature.luau | Failed to find feeding tool", feedingItemName, "for player", player.Name)
+		return -- Cannot feed without the tool
+	end
+
+	self.model:SetAttribute("CanFeed", false) -- Prevent multiple feedings
+	local heartsFX = self.head:FindFirstChild("HeartsFX")
+	if not heartsFX then
+		heartsFX = HEARTS_FX_TEMPLATE:Clone()
+		heartsFX.Parent = self.head
+	end
+
+	heartsFX:Emit(15)
+
+	local soundLength: number? = self:playSound("Eat")
+	if soundLength then
+		task.wait(math.clamp(soundLength, 1, 7)) -- Wait for sound to finish before allowing feeding again, clamped to reasonable values just in case
+	end
+	self.model:SetAttribute("CanFeed", true)
 end
 
 --------------------------------------------- DESPAWN METHOD ---------------------------------------------
