@@ -16,7 +16,8 @@ local summonedCreatures: Folder = game.Workspace.SummonedCreatures
 local feedingEvent: RemoteEvent = ReplicatedStorage.RemoteEvents.FeedCreatureEvent
 
 --- // CONFIG
-local FEEDING_RANGE_DEFAULT = 10 -- Distance within which a creature can be fed
+local config = ReplicatedStorage.Configurations.CreatureSystemsConfig
+local FEEDING_RANGE_DEFAULT = config:GetAttribute("FeedingRange") or 10 -- Distance within which a creature can be fed
 
 --- // VARIABLES
 local feedingHighlight: Highlight? = nil -- Store the highlight instance, reused for efficiency

@@ -22,10 +22,11 @@ local creatureZone = ZoneModule.new(creatureZoneContainer)
 local creatureSummonEvents = ReplicatedStorage.RemoteEvents.CreatureSummonSystem
 
 --- // CONFIG
+local config = ReplicatedStorage.Configurations.CreatureSystemsConfig
 local MOVEMENT_DELAY = 3 -- How long until the creature can move. Related to sparkle life length
-local MAX_CREATURES = 7 -- Max number of creatures allowed to be summoned at once. Set to 0 or nil for unlimited (not recommended)
-local MAX_DESPAWN_DISTANCE = 200 -- Max distance from the spawn point before a creature despawns itself
-local MAX_DESPAWN_TIME = 300
+local MAX_CREATURES = config:GetAttribute("MaxCreatures") or 7 -- Max number of creatures allowed to be summoned at once. Set to 0 or nil for unlimited (not recommended)
+local MAX_DESPAWN_DISTANCE = config:GetAttribute("MaxDespawnDistance") or 200 -- Max distance from the spawn point before a creature despawns itself
+local MAX_DESPAWN_TIME = config:GetAttribute("MaxDespawnTime") or 60 -- Max time (in seconds) to wait for a creature to reach the despawn point before forcing despawn
 
 local activeCreatures = {} -- Table to hold references for creature classes & creatures that are active in the game world
 local creaturesList = {} -- Dictionary of creatures and their limits, sent to clients
@@ -60,6 +61,11 @@ local function despawnRequested(player, creatureType: string)
 		if creatureModel.Name ~= creatureType then
 			continue
 		end
+
+		if creatureClass.despawning then
+			continue
+		end
+
 		local success, result = pcall(function()
 			local moveTime = creatureClass:moveToPoint(targetSpawn.Position)
 			moveTime = math.clamp(moveTime, 0, MAX_DESPAWN_TIME)

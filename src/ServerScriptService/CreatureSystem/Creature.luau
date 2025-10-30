@@ -252,6 +252,13 @@ function NPC.spawn(npcModelTemplate, container: Folder, spawnLocation: CFrame | 
 		self:emitSparkles()
 		activeCreatures[model] = self -- Store reference to active creature class
 
+		-- For whatever reason, if the creature dies or falls out of the world, its model does not get removed properly and only its parts get deleted
+		table.insert(self.connections, self.humanoidRootPart:GetPropertyChangedSignal("Parent"):Connect(function()
+			if not self.humanoidRootPart.Parent or not self.model.Parent then
+				self:despawn()
+			end
+		end))
+
 		-- Run aggression functionality
 		-- Currently DISABLED, as this is not optimized
 		-- if  then
@@ -529,7 +536,7 @@ function NPC:moveToPoint(pos: Vector3): number?
 
 			while MoveToFinished == false do
 				local wpDistance = (self.humanoidRootPart.Position - waypoint.Position).Magnitude
-				local distFactor = self.creatureName == "Dementor" and 7.2 or 3.3 -- Dementors are tall and need more distance. This is hacky but works for now. It will need to be expanded/adjusted if more tall creatures are added
+				local distFactor = self.creatureName == "Dementor" and 7.2 or self.creatureName == "Hippogriff" and 10 or 3.3 -- Dementors are tall and need more distance. This is hacky but works for now. It will need to be expanded/adjusted if more tall creatures are added
 				if wpDistance <= distFactor then
 					listenConn:Disconnect()
 					break
@@ -648,7 +655,7 @@ end
 
 --------------------------------------------- DESPAWN METHOD ---------------------------------------------
 
--- Method to respawn an NPC and disconnect all connections
+-- Method to despawn an NPC and disconnect all connections
 function NPC:despawn()
 	local success, result = pcall(function()
 		activeCreatures[self.model] = nil -- Remove reference to active creature class

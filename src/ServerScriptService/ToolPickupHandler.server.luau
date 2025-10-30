@@ -20,7 +20,6 @@ local tools: Folder = ServerStorage.Tools
 local stewTemplate = ServerStorage.Tools.Food["Hearty Stew"]
 
 --- // CONFIG
-local creatureConfig = ReplicatedStorage.Configurations.CreatureSystemsConfig
 local PURCHASE_TIME_LIMIT = 2 * 60
 local TAG_TOOL_PICKUP = "ToolPickup"
 local HOLD_DURATION = 0.3

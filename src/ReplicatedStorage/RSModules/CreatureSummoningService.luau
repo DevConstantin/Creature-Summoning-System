@@ -10,9 +10,10 @@ local summonedCreatures: Folder = game.Workspace.SummonedCreatures
 local CreatureStats = require(ReplicatedStorage.DB.CreatureStats)
 
 -- // CONFIG
-local MAX_CREATURES = 7 -- Max number of creatures allowed to be summoned at once. Set to 0 or nil for unlimited (not recommended)
+local config = ReplicatedStorage.Configurations.CreatureSystemsConfig
+local MAX_CREATURES = config:GetAttribute("MaxCreatures") or 7 -- Max number of creatures allowed to be summoned at once. Set to 0 or nil for unlimited (not recommended)
 local COMC_TITLE = "Care of Magical Creatures Instructor"
-local INSTRUCTOR_ONLY = false -- If true, only the Care of Magical Creatures Instructor can summon creatures. Should ONLY be false for testing purposes.
+local INSTRUCTOR_ONLY = config:GetAttribute("InstructorOnly") -- If true, only the Care of Magical Creatures Instructor can summon creatures. Should ONLY be false for testing purposes.
 
 -- // FUNCTIONS
 -- Function to check if a player is allowed to summon creatures based on their title, only if INSTRUCTOR_ONLY is true

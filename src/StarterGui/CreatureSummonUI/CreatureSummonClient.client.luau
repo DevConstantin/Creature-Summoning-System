@@ -26,8 +26,9 @@ local hoverSound = uiSounds:WaitForChild("RBLX UI Hover 03 (SFX)")
 local confirmSound = uiSounds:WaitForChild("RBLX UI Back (SFX)")
 
 --- // CONFIG
-local MAX_CREATURES = 7 -- Must match server config. Used for display purposes only
-local SUMMON_SPARKLE_AMOUNT = 10
+local config = ReplicatedStorage.Configurations.CreatureSystemsConfig
+local MAX_CREATURES = config:GetAttribute("MaxCreatures") or 7
+local SUMMON_SPARKLE_AMOUNT = config:GetAttribute("SummonSparkleAmount") or 10
 local frameVisibilityTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.InOut)
 
 --- // VARIABLES
