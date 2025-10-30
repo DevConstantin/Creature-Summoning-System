@@ -15,6 +15,36 @@
       "$ignoreUnknownInstances": true,
       "$path": "src/ReplicatedStorage",
 
+      "RemoteEvents": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true,
+        "$path": "src/ReplicatedStorage/RemoteEvents",
+
+        "FeedCreatureEvent": {
+          "$className": "RemoteEvent",
+          "$ignoreUnknownInstances": true,
+          "$path": "src/ReplicatedStorage/RemoteEvents/FeedCreatureEvent"
+        },
+
+        "CreatureSummonSystem": {
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true,
+          "$path": "src/ReplicatedStorage/RemoteEvents/CreatureSummonSystem",
+
+          "SummonCreature": {
+            "$className": "RemoteEvent",
+            "$ignoreUnknownInstances": true,
+            "$path": "src/ReplicatedStorage/RemoteEvents/CreatureSummonSystem/SummonCreature"
+          },
+
+          "RemoveCreature": {
+            "$className": "RemoteEvent",
+            "$ignoreUnknownInstances": true,
+            "$path": "src/ReplicatedStorage/RemoteEvents/CreatureSummonSystem/RemoveCreature"
+          }
+        }
+      },
+
       "Configurations": {
         "$className": "Folder",
         "$ignoreUnknownInstances": true,
