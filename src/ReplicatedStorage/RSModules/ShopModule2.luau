@@ -8,8 +8,14 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local msgModule = require(ReplicatedStorage:WaitForChild("RSModules"):WaitForChild("MessageSystem"))
 
+local mainWoSGame = (game.PlaceId == workspace:GetAttribute("WoSId") or game.PlaceId == workspace:GetAttribute("WoS_PublicTesting_Id") or workspace:GetAttribute("SimulatingMainGame"))
+
 local IGNORE_GALLEON_CHECK = true -- Set to true to ignore galleon checks (for testing purposes)
 local ITEM_CAP = 3 -- Default item cap
+
+if mainWoSGame then -- Ensure this is false for live environment
+	IGNORE_GALLEON_CHECK = false
+end
 
 -- Stores how many of an item a player has purchased, and when was the last time they purchased the item
 local purchases = {}

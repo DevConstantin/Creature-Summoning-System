@@ -7,6 +7,9 @@ Overview:
  This currently includes creature spawning, despawning, walking/flying/moving, and feeding interactions.
  At this time, the system does not handle combat or advanced AI behaviors. It is only used for the Care of Magical Creatures class.
 
+WARNING:
+ ShopSystemModule2: Ensure ignore galleon check is false for LIVE environment
+
 Required instances:
  Workspace
   - CreatureSummonSystem (Folder) -- Main folder for the Creature Summoning System, containing all necessary creature spawn instances
