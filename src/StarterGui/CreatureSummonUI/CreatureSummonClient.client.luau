@@ -157,14 +157,16 @@ end
 local function creatureAdded(creature: Model)
 	pcall(function()
 		updateLimitText()
-		local sparklesValue = creature and creature.Parent and creature:FindFirstChild("SparklesValue")
-		if sparklesValue and sparklesValue.Value then
-			print("Emitting sparkles!")
-			task.wait()
-			sparklesValue.Value:Emit(SUMMON_SPARKLE_AMOUNT)
-		else
-			warn("Failed to get sparkles for", creature)
-		end
+		local success, sparklesValue = pcall(function()
+			local sparklesValue = creature:WaitForChild("SummonSparkles", 5)
+			if sparklesValue and sparklesValue.Value then
+				print("Emitting sparkles!")
+				task.wait()
+				sparklesValue.Value:Emit(SUMMON_SPARKLE_AMOUNT)
+			else
+				warn("Failed to get sparkles for", creature)
+			end
+		end)
 	end)
 end
 

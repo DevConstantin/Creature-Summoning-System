@@ -121,6 +121,9 @@ local function spawnNPC(model, container: Folder, spawnCFrame: CFrame, useFF: bo
 	local collisions = model:FindFirstChild("Collisions") and model.Collisions.Value or true
 	local selfCollisions = model:FindFirstChild("SelfCollisions") and model.SelfCollisions.Value or true
 
+	model.Parent = container
+	task.wait(1) -- Wait a moment for the model to settle, then tween in visibility
+
 	for _, part in ipairs(model:GetDescendants()) do
 		if not part:IsA("BasePart") or part == humrp then
 			continue
@@ -150,7 +153,6 @@ local function spawnNPC(model, container: Folder, spawnCFrame: CFrame, useFF: bo
 			model:SetAttribute("Spawning", nil)
 		end
 	end)
-	model.Parent = container
 end
 
 function NPC.getActiveCreatures(): { Model: NPC }
