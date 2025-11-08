@@ -1,12 +1,3 @@
---- // CREATURE SETUP INFO
--- Add 'Collisions' BoolValue to configure if the creature has collisions or not
--- Add "SelfCollisions" BoolValue to configure if the creature has collisions with itself (so pixies don't collide for instance)
--- Add a "IsFlying" BoolValue to the creature if it's supposed to fly. AlignPosition and AlignOrientation will be set up by 'Utilities' module
--- You can place sparkle FX (must be named 'Sparkles') anywhere in the NPC. Creature initialization will set up a "SparklesValue" object value to easily reference them
--- Sounds can be parented to any part in the creature. Just make sure they are named correctly to match the sound types in the code (Idle, Walk, Run, Attack, Death, Scream, Eat, etc)
--- Animations must be placed in an 'Animations' folder within the creature model. They must also be named correctly to match the animation types in the code (Idle, Walk, Run, Attack, Death, etc)
--- Add head part named "Head" or "HeadPart" under creature model (for effects such as feeding hearts). The head part doesn't exist on all creatures, and must be added manually if needed. Will fall back to HRP if not found.
-
 local NPC = {}
 NPC.__index = NPC
 
@@ -20,7 +11,7 @@ local Debris = game:GetService("Debris")
 
 --- // OBJECTS
 local Utilities = require(script.Parent.Utilities)
-local creatureStats = require(script.Parent.CreatureStats)
+local CreatureStats = require(ReplicatedStorage.DB.CreatureStats)
 local Pathfinding = require(ReplicatedStorage.RSModules.Pathfinding)
 
 local summonedCreatures: Folder = workspace.SummonedCreatures
@@ -118,32 +109,36 @@ local function spawnNPC(model, container: Folder, spawnCFrame: CFrame, useFF: bo
 		safezoneFF.Parent = model
 	end
 
-	local collisions = model:FindFirstChild("Collisions") and model.Collisions.Value or true
-	local selfCollisions = model:FindFirstChild("SelfCollisions") and model.SelfCollisions.Value or true
+	local creatureStats = CreatureStats[creatureName]
+	local collisions = creatureStats and creatureStats.collisions or CreatureStats["Default"].collisions
+	local selfCollisions = creatureStats and creatureStats.selfCollisions or CreatureStats["Default"].selfCollisions
+	print("Does ", creatureName, "have collisions?", collisions, "self-collisions?", selfCollisions)
 
 	model.Parent = container
 	task.wait(1) -- Wait a moment for the model to settle, then tween in visibility
 
 	for _, part in ipairs(model:GetDescendants()) do
-		if not part:IsA("BasePart") or part == humrp then
+		if not part:IsA("BasePart") then
+			continue
+		end
+
+		-- Set collision group for all parts if self-collisions are disabled, including the humanoid root part
+		if selfCollisions == false then
+			part.CollisionGroup = creatureName
+		end
+
+		if part == humrp then
 			continue
 		end
 
 		createWeld(part, humrp)
 
 		local targetTransparency = part:GetAttribute("TargetTransparency") or 1
-
-		if creatureName == "Dementor" then
-			print(part:GetFullName(), targetTransparency)
-		end
 		if part.Transparency ~= targetTransparency then
 			TweenPlus:Create(part, visibilityTweenInfo, { Transparency = targetTransparency }):Play()
 		end
 		if collisions == false then
 			part.CanCollide = false
-		end
-		if collisions and selfCollisions == false then
-			part.CollisionGroup = creatureName
 		end
 	end
 
@@ -189,7 +184,7 @@ function NPC.spawn(npcModelTemplate, container: Folder, spawnLocation: CFrame | 
 		self.despawning = false -- Flag to prevent actions such as movement when despawning
 
 		-- Initialize creature stats
-		local stats = creatureStats[creatureName] or creatureStats["Default"]
+		local stats = CreatureStats[creatureName] or CreatureStats["Default"]
 		self.isAggressive = npcModelTemplate:GetAttribute("Aggressive")
 		self.aggression = stats.aggression or 0
 		self.fear = stats.fear or 0

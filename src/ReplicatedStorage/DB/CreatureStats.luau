@@ -12,6 +12,9 @@ local CreatureStats = {
 		trackSpeed = 20,
 		-- Summoning during Care of Magical Creatures
 		summonCap = 5,
+
+		collisions = false,
+		selfCollisions = false,
 	},
 
 	["Dementor"] = {
@@ -28,6 +31,9 @@ local CreatureStats = {
 		-- Summoning during Care of Magical Creatures
 		summonCap = 3,
 		moveToNearby = false,
+
+		collisions = false,
+		selfCollisions = false,
 	},
 
 	["Hippogriff"] = {
@@ -44,6 +50,9 @@ local CreatureStats = {
 		-- Summoning during Care of Magical Creatures
 		summonCap = 1,
 		moveToNearby = false,
+
+		collisions = true,
+		selfCollisions = true,
 	},
 
 	["Default"] = {
@@ -60,6 +69,9 @@ local CreatureStats = {
 		-- Summoning during Care of Magical Creatures
 		summonCap = 3,
 		moveToNearby = false,
+
+		collisions = false,
+		selfCollisions = false,
 	},
 }
 

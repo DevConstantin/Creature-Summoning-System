@@ -5,14 +5,14 @@ local PhysicsService = game:GetService("PhysicsService")
 
 --- // OBJECTS
 local CreatureModule = require(script.Parent.Creature)
-local CreatureStats = require(script.Parent.CreatureStats)
+local CreatureStats = require(ReplicatedStorage.DB.CreatureStats)
 local CreatureSummoningService = require(ReplicatedStorage.RSModules.CreatureSummoningService)
 local ZoneModule = require(ReplicatedStorage.RSModules.Zone)
 local MessageModule =ReplicatedStorage.RSModules:FindFirstChild("MessageModule")
 MessageModule = MessageModule and require(MessageModule)
-local creatures = ServerStorage.Creatures
 
-local summonSystem = workspace.CreatureSummonSystem
+local creatures: Folder = ServerStorage.Creatures
+local summonSystem: Folder = workspace.CreatureSummonSystem
 local summonedCreaturesFolder: Folder = workspace.SummonedCreatures
 local summonBriefcase: BasePart = summonSystem.CreatureSpawner
 local targetSpawn: BasePart = summonSystem.CreatureSpawn
@@ -164,11 +164,11 @@ local function setupCreature(creature: Model)
 
 	local summonLimit = creatureStats.summonCap
 	if summonLimit and summonLimit > 0 then
-		creaturesList[creature.Name] = summonLimit
+		creaturesList[creature.Name] = math.min(summonLimit, MAX_CREATURES > 0 and MAX_CREATURES or summonLimit)
 	end
 
 	-- Setup collision group for the creature to avoid self-collisions
-	local selfCollisions = creature:FindFirstChild("SelfCollisions") and creature.SelfCollisions.Value
+	local selfCollisions: boolean | nil = creature:FindFirstChild("SelfCollisions") and creature.SelfCollisions.Value
 	if not selfCollisions then
 		PhysicsService:RegisterCollisionGroup(creatureName)
 		PhysicsService:CollisionGroupSetCollidable(creatureName, creatureName, false)

@@ -56,8 +56,10 @@
           "$path": "src/ReplicatedStorage/Configurations",
           "$properties": {
             "Attributes": {
-              "Foo": {"Bool": true},
-              "Bar": {"Vector3": [1.0, 2.0, 3.0]}
+              "MaxCreatures": {"Int32": 3},
+              "InstructorOnly": {"Bool": true},
+              "FeedingRange": {"Int32": 12},
+              "MaxDespawnTime": {"Int32": 60}
             }
           } 
         }

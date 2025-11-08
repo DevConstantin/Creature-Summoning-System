@@ -1,4 +1,3 @@
-
 -- 23.10.25: Refactor of script to handle general item pickup
 
 -- Objects involved in stew system:
@@ -106,7 +105,7 @@ for _, pickupPart: BasePart in ipairs(CollectionService:GetTagged(TAG_TOOL_PICKU
 end
 
 if stewPots then
-	for _, stewPot: Model in pairs(stewPots:GetChildren()) do
+	for _, stewPot: Model in ipairs(stewPots:GetChildren()) do
 		initializeStewPot(stewPot)
 	end
 end
