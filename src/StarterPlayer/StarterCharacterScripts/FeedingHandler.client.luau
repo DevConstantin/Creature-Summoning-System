@@ -1,5 +1,6 @@
--- This module handles creature feeding logic on the client side
+-- This module handles creature interaction logic on the client side
 -- It tracks when the player equips food items, highlights feedable creatures (if any are nearby), and fires server events to feed them
+-- It also handles using a leash tool to interact with creatures, using the same highlight and interaction logic
 -- IMPORTANT: To mark a tool as a feeding tool, set a "FeedingTool" bool attribute to true on the tool instance
 
 --- // SERVICES
@@ -13,34 +14,34 @@ local localPlayer: Player = Players.LocalPlayer
 local character: Model? = localPlayer.Character or localPlayer.CharacterAdded:Wait()
 local summonedCreatures: Folder = game.Workspace.SummonedCreatures
 
-local feedingEvent: RemoteEvent = ReplicatedStorage.RemoteEvents.FeedCreatureEvent
+local feedEvent: RemoteEvent = ReplicatedStorage.RemoteEvents.CreatureSummonSystem.FeedCreatureEvent
 
 --- // CONFIG
 local config = ReplicatedStorage.Configurations.CreatureSystemsConfig
-local FEEDING_RANGE_DEFAULT = config:GetAttribute("FeedingRange") or 10 -- Distance within which a creature can be fed
+local leashToolName = "Leash"
+local INTERACT_RANGE_DEFAULT = config:GetAttribute("InteractRange") or 10 -- Distance within which a creature can be fed
 
 --- // VARIABLES
-local feedingHighlight: Highlight? = nil -- Store the highlight instance, reused for efficiency
+local interactionHighlight: Highlight? = nil -- Store the highlight instance, reused for efficiency
 local highlightConnect = nil
 local inputConnect = nil
 
 --- // FUNCTIONS
-
--------------------- Highlight Management --------------------
+-------------------- Highlight Instance Management --------------------
 
 -- Get or create the highlight instance, reusing it for efficiency
 local function getHighlight(): Highlight
-	if feedingHighlight then
-		return feedingHighlight
+	if interactionHighlight then
+		return interactionHighlight
 	end
 
-	feedingHighlight = Instance.new("Highlight")
-	feedingHighlight.FillColor = Color3.new(1, 1, 1) -- White color for highlighting
-	feedingHighlight.FillTransparency = 1
-	feedingHighlight.OutlineColor = Color3.new(1, 1, 1) -- White outline
-	feedingHighlight.OutlineTransparency = 0
-	feedingHighlight.Name = "FeedingHighlight"
-	return feedingHighlight
+	interactionHighlight = Instance.new("Highlight")
+	interactionHighlight.FillColor = Color3.new(1, 1, 1) -- White color for highlighting
+	interactionHighlight.FillTransparency = 1
+	interactionHighlight.OutlineColor = Color3.new(1, 1, 1) -- White outline
+	interactionHighlight.OutlineTransparency = 0
+	interactionHighlight.Name = "InteractionHighlight"
+	return interactionHighlight
 end
 
 -- Apply highlight to the specified creature model
@@ -54,14 +55,13 @@ end
 
 -- Remove the highlight from the current creature
 local function removeHighlight()
-	if feedingHighlight and feedingHighlight.Parent ~= ReplicatedStorage then
-		feedingHighlight.Adornee = nil
-		feedingHighlight.Parent = ReplicatedStorage
+	if interactionHighlight and interactionHighlight.Parent ~= ReplicatedStorage then
+		interactionHighlight.Adornee = nil
+		interactionHighlight.Parent = ReplicatedStorage
 	end
 end
 
---------------------- Creature Feeding Logic --------------------
--- Check if the character has a tool that can be used for feeding
+--------------------- Creature Highlight Logic --------------------
 local function getFeedingTool(): Tool?
 	for _, tool in ipairs(character:GetChildren()) do
 		if tool:IsA("Tool") and tool:GetAttribute("FeedingTool") == true then
@@ -71,10 +71,14 @@ local function getFeedingTool(): Tool?
 	return nil
 end
 
--- Get the closest creature within feeding range
+local function getLeashTool(): Tool?
+	return character:FindFirstChild(leashToolName) :: Tool?
+end
+
+-- Get the closest creature within interaction range
 local function getClosestCreature(): Model?
 	local closestCreature: Model? = nil
-	local closestDistance: number = FEEDING_RANGE_DEFAULT
+	local closestDistance: number = INTERACT_RANGE_DEFAULT
 
 	for _, creatureModel in ipairs(summonedCreatures:GetChildren()) do
 		if creatureModel:GetAttribute("Despawning") == true or creatureModel:GetAttribute("Spawning") == true then
@@ -92,45 +96,64 @@ local function getClosestCreature(): Model?
 		end
 	end
 
-	if closestDistance > FEEDING_RANGE_DEFAULT then
+	if closestDistance > INTERACT_RANGE_DEFAULT then
 		return nil
 	end
-
 	return closestCreature
 end
 
 -- Highlight closest creature that can be fed
-local function highlightCreature()
-	local feedingTool = getFeedingTool()
-	if not feedingTool then
+local function highlightCreature(): boolean
+	local interactionTool = getFeedingTool() or getLeashTool()
+	if not interactionTool then
 		removeHighlight()
-		return
+		return false
 	end
 
 	local closestCreature: Model? = getClosestCreature()
-	if closestCreature then
-		setHighlight(closestCreature)
-	else
+	if not closestCreature then
 		removeHighlight()
-		return
+		return false
+	end
+
+	setHighlight(closestCreature)
+	return true
+end
+
+-------------------- UI Management --------------------
+-- Toggle the Creature Management UI visibility. Enabled when a creature is highlighted for interaction, disabled otherwise
+local function toggleCreatureManagementFrame(enabled: boolean)
+	local summonUI = localPlayer:WaitForChild("PlayerGui"):FindFirstChild("CreatureSummonUI") :: ScreenGui?
+	local managementFrame = summonUI and summonUI:FindFirstChild("CreatureManagementFrame") :: Frame?
+	if managementFrame then
+		managementFrame.Visible = enabled
+		summonUI.Enabled = true
+	else
+		warn("Creature management frame not found:", summonUI, managementFrame)
 	end
 end
 
-local function feedCreature(input, gpe)
+--------------------- Creature Interaction Logic --------------------
+local function interactWithCreature(input, gpe)
 	if gpe then
 		return
 	end
 
-	local feedingTool = getFeedingTool()
-	if not feedingTool then
+	local interactionTool = getFeedingTool() or getLeashTool()
+	if not interactionTool then
 		return
 	end
 
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		if feedingHighlight and feedingHighlight.Adornee then
-			local highlightedCreature: Model = feedingHighlight.Adornee :: Model
-			print("Feeding creature:", highlightedCreature.Name)
-            feedingEvent:FireServer(highlightedCreature, feedingTool.Name)
+		if interactionHighlight and interactionHighlight.Adornee then
+			local highlightedCreature: Model = interactionHighlight.Adornee :: Model
+			print("Interacting with creature:", highlightedCreature.Name)
+			if interactionTool:GetAttribute("FeedingTool") == true then
+				print("Feeding creature with tool:", interactionTool.Name)
+				feedEvent:FireServer(highlightedCreature, interactionTool.Name)
+			else
+				print("Using leash on creature:", highlightedCreature.Name)
+			end
 		end
 	end
 end
@@ -140,21 +163,22 @@ end
 -- Listen for tools with the FeedingTool attribute being equipped/unequipped
 -- When equipped, start highlighting nearby creatures and listen for input to feed them
 character.ChildAdded:Connect(function(child)
-	if child:IsA("Tool") and child:GetAttribute("FeedingTool") == true then
-		print("Feeding tool equipped")
-		-- Player equipped a feeding tool
-		highlightConnect = RunService.RenderStepped:Connect(highlightCreature)
-
-		-- Listen for input to feed creatures
-		inputConnect = UserInputService.InputBegan:Connect(feedCreature)
+	if child:IsA("Tool") and (child:GetAttribute("FeedingTool") == true or child.Name == leashToolName) then
+		print("Creature interaction tool equipped")
+		highlightConnect = RunService.RenderStepped:Connect(function()
+			local foundCreature = highlightCreature()
+			toggleCreatureManagementFrame(foundCreature)
+		end)
+		inputConnect = UserInputService.InputBegan:Connect(interactWithCreature)		-- Listen for input to feed creatures
 	end
 end)
 
 character.ChildRemoved:Connect(function(child)
-	if child:IsA("Tool") and child:GetAttribute("FeedingTool") == true then
-		print("Feeding tool unequipped")
+	if child:IsA("Tool") and (child:GetAttribute("FeedingTool") == true or child.Name == leashToolName) then
+		print("Creature interaction tool unequipped")
 		-- Player unequipped a feeding tool
 		if highlightConnect then
+			toggleCreatureManagementFrame(false)
 			highlightConnect:Disconnect()
 			highlightConnect = nil
 		end
@@ -162,8 +186,7 @@ character.ChildRemoved:Connect(function(child)
 		if inputConnect then
 			inputConnect:Disconnect()
 			inputConnect = nil
-		end
-		
+		end	
 		-- Remove any existing highlight
 		removeHighlight()
 	end

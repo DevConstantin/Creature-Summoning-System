@@ -34,19 +34,21 @@ Required instances:
   - DB:             CreatureStats (Folder)
   - Configurations: CreatureSystemsConfig (Configuration)
   - RSModules:      CreatureSummoningService, Pathfinding, MessageSystem (warnings), ShopModule2 (feeding item pickups), Zone (Creature roaming), DebugService (optional)
-  - RemoteEvents:   CreatureSummonSystem, FeedCreatureEvent, Message system events
+  - RemoteEvents:   CreatureSummonSystem (Also includes feeding & management events), Message system events
 
  ServerScriptService
    - CreatureSystem (Folder)
    - ToolPickupHandler (Script) -- For handling tools that can feed creatures (meat, fish, etc.)
 
  ServerStorage
-    - Creatures (Folder) -- Contains creature models and related assets
-    - Tools: CookingIngredients (Folder) -- Contains feeding tools and ingredients
+    - Creatures (Folder) -- Contains creature models & related assets
+    - Tools:
+        -CookingIngredients (Folder) -- Contains feeding tools & ingredients
+        -Leash (Tool) -- Tool used to manage & interact with creatures
 
  StarterGui
   - CreatureSummonUI
-  - MessageGui (for warnings and messages)
+  - MessageGui (for warnings & messages)
 
  StarterPlayer
    - StarterCharacters: FeedingHandler (Script) -- For handling feeding tools on the client side

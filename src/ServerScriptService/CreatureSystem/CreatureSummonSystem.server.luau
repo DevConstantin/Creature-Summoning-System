@@ -18,6 +18,7 @@ local summonBriefcase: BasePart = summonSystem.CreatureSpawner
 local targetSpawn: BasePart = summonSystem.CreatureSpawn
 local creatureZoneContainer: Folder | BasePart = summonSystem.CreatureZone
 local creatureZone = ZoneModule.new(creatureZoneContainer)
+local leashTemplate: Tool = ServerStorage.Tools:FindFirstChild("Leash")
 
 local creatureSummonEvents = ReplicatedStorage.RemoteEvents.CreatureSummonSystem
 
@@ -117,6 +118,27 @@ local function summonRequested(player, creatureType: string)
 	end
 end
 
+local function addLeashTool(player: Player)
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if not backpack then
+		warn("Failed to find backpack for player:", player.Name)
+		return
+	end
+
+	if backpack:FindFirstChild("Leash") or player.Character:FindFirstChild("Leash") then
+		-- Player already has a leash tool
+		return
+	end
+
+	if not leashTemplate then
+		warn("Leash tool template not found in ServerStorage.Tools")
+		return
+	end
+
+	local leashTool = leashTemplate:Clone()
+	leashTool.Parent = backpack
+end
+
 -- Open creature summon GUI for the player, if they are the gamekeeper
 local function suitcaseTriggered(player)
 	local isGamekeeper, _ = CreatureSummoningService.isGamekeeper(player, true)
@@ -124,6 +146,7 @@ local function suitcaseTriggered(player)
 		print(creaturesList)
 		summonBriefcase.Sparkles:Emit(10)
 		creatureSummonEvents.SummonCreature:FireClient(player, creaturesList)
+		addLeashTool(player)
 	else
 		warn("Only the Care of Magical Creatures instructor can use this.")
 		if MessageModule then

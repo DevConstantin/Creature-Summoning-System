@@ -42,7 +42,7 @@ local currentCreature = nil
 --- // FUNCTIONS
 
 local function tweenVisibility()
-	local visible = summonUI:GetAttribute("FramesVisible")
+	local visible = summonUI:GetAttribute("SummonFrameVisible")
 	TweenService:Create(mainFrame, frameVisibilityTweenInfo, { Position = visible and INITIAL_POS or CLOSED_POS })
 		:Play()
 end
@@ -89,10 +89,10 @@ local function createCreatureButton(name: string, limit: number)
 end
 
 local function toggleUI(_creatureList)
-	summonUI:SetAttribute("FramesVisible", not summonUI:GetAttribute("FramesVisible"))
+	summonUI:SetAttribute("SummonFrameVisible", not summonUI:GetAttribute("SummonFrameVisible"))
 	tweenVisibility()
 
-	if not summonUI:GetAttribute("FramesVisible") then
+	if not summonUI:GetAttribute("SummonFrameVisible") then
 		confirmSound:Play()
 	end
 
@@ -172,7 +172,7 @@ end
 
 --- // MAIN
 updateLimitText()
-summonUI:SetAttribute("FramesVisible", false)
+summonUI:SetAttribute("SummonFrameVisible", false)
 mainFrame.Position = CLOSED_POS
 summonUI.Enabled = true
 

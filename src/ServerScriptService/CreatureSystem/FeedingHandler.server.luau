@@ -4,11 +4,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Creature = require(script.Parent.Creature)
 local summonedCreatures: Folder = game.Workspace.SummonedCreatures
 
-local feedingEvent: RemoteEvent = ReplicatedStorage.RemoteEvents.FeedCreatureEvent
+local feedingEvent: RemoteEvent = ReplicatedStorage.RemoteEvents.CreatureSummonSystem.FeedCreatureEvent
 
 --- // CONFIG
 local config = ReplicatedStorage.Configurations.CreatureSystemsConfig
-local FEEDING_RANGE_DEFAULT = config:GetAttribute("FeedingRange") or 12 -- Default feeding range. Slightly higher than client to account for latency.
+local INTERACT_RANGE_DEFAULT = config:GetAttribute("InteractRange") or 12 -- Default feeding range. Slightly higher than client to account for latency.
 
 local function inProximity(player: Player, creatureModel: Model): boolean
     local character = player.Character
@@ -23,7 +23,7 @@ local function inProximity(player: Player, creatureModel: Model): boolean
     end
 
     local distance = (hrp.Position - creatureHrp.Position).Magnitude
-    return distance <= FEEDING_RANGE_DEFAULT
+    return distance <= INTERACT_RANGE_DEFAULT
 end
 
 local function onFeedCreature(player: Player, creatureModel: Model, feedingToolName: string)

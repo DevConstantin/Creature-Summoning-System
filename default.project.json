@@ -10,21 +10,21 @@
       "$path": "src/ServerScriptService"
     },
 
-     "ReplicatedStorage": {
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "$ignoreUnknownInstances": true,
+      "$path": "src/ServerStorage"
+    },
+     
+    "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
       "$ignoreUnknownInstances": true,
       "$path": "src/ReplicatedStorage",
-
+     
       "RemoteEvents": {
         "$className": "Folder",
         "$ignoreUnknownInstances": true,
         "$path": "src/ReplicatedStorage/RemoteEvents",
-
-        "FeedCreatureEvent": {
-          "$className": "RemoteEvent",
-          "$ignoreUnknownInstances": true,
-          "$path": "src/ReplicatedStorage/RemoteEvents/FeedCreatureEvent"
-        },
 
         "CreatureSummonSystem": {
           "$className": "Folder",
@@ -41,6 +41,18 @@
             "$className": "RemoteEvent",
             "$ignoreUnknownInstances": true,
             "$path": "src/ReplicatedStorage/RemoteEvents/CreatureSummonSystem/RemoveCreature"
+          },
+
+          "FeedCreatureEvent": {
+            "$className": "RemoteEvent",
+            "$ignoreUnknownInstances": true,
+            "$path": "src/ReplicatedStorage/RemoteEvents/CreatureSummonSystem/FeedCreatureEvent"
+          },
+
+          "ManageCreatureEvent": {
+            "$className": "RemoteEvent",
+            "$ignoreUnknownInstances": true,
+            "$path": "src/ReplicatedStorage/RemoteEvents/CreatureSummonSystem/ManageCreatureEvent"
           }
         }
       },
@@ -58,7 +70,7 @@
             "Attributes": {
               "MaxCreatures": {"Int32": 3},
               "InstructorOnly": {"Bool": true},
-              "FeedingRange": {"Int32": 12},
+              "InteractRange": {"Int32": 12},
               "MaxDespawnTime": {"Int32": 60}
             }
           } 
