@@ -7,8 +7,7 @@ local PhysicsService = game:GetService("PhysicsService")
 local CreatureModule = require(script.Parent.Creature)
 local CreatureStats = require(ReplicatedStorage.DB.CreatureStats)
 local CreatureSummoningService = require(ReplicatedStorage.RSModules.CreatureSummoningService)
-local ZoneModule = require(ReplicatedStorage.RSModules.Zone)
-local MessageModule =ReplicatedStorage.RSModules:FindFirstChild("MessageModule")
+local MessageModule = ReplicatedStorage.RSModules:FindFirstChild("MessageModule")
 MessageModule = MessageModule and require(MessageModule)
 
 local creatures: Folder = ServerStorage.Creatures
@@ -16,11 +15,11 @@ local summonSystem: Folder = workspace.CreatureSummonSystem
 local summonedCreaturesFolder: Folder = workspace.SummonedCreatures
 local summonBriefcase: BasePart = summonSystem.CreatureSpawner
 local targetSpawn: BasePart = summonSystem.CreatureSpawn
-local creatureZoneContainer: Folder | BasePart = summonSystem.CreatureZone
-local creatureZone = ZoneModule.new(creatureZoneContainer)
+local creatureZone = CreatureModule.CreatureZone
 local leashTemplate: Tool = ServerStorage.Tools:FindFirstChild("Leash")
 
-local creatureSummonEvents = ReplicatedStorage.RemoteEvents.CreatureSummonSystem
+local creatureEvents = ReplicatedStorage.RemoteEvents.CreatureSummonSystem
+local manageCreatureEvent: RemoteEvent = creatureEvents.ManageCreatureEvent
 
 --- // CONFIG
 local config = ReplicatedStorage.Configurations.CreatureSystemsConfig
@@ -31,9 +30,33 @@ local MAX_DESPAWN_TIME = config:GetAttribute("MaxDespawnTime") or 60 -- Max time
 
 local activeCreatures = {} -- Table to hold references for creature classes & creatures that are active in the game world
 local creaturesList = {} -- Dictionary of creatures and their limits, sent to clients
+type NPC = CreatureModule.NPC
 
 --- // FUNCTIONS
 
+-- Helper function to get a creature class from the creature model or creature name
+local function getCreatureClass(creature: Model | string): (Model?, NPC?)
+	local creatureModel: Model? = typeof(creature) ~= "string" and creature or nil -- Set the creature model variable to the paramater, if a non-string was sent in
+	local creatureClass: NPC
+	for _creatureClass, _creatureModel in pairs(activeCreatures) do
+		if _creatureClass.despawning then
+			return
+		end
+
+		if typeof(creature) == "string" and _creatureModel.Name == creature then
+			creatureClass = _creatureClass
+			creatureModel = _creatureModel
+			break
+		elseif _creatureModel == creature then
+			creatureClass = _creatureClass
+			break
+		end
+	end
+	return creatureModel, creatureClass
+end
+------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------ Summon Functions ------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------------------
 -- Function to despawn all creatures
 local function despawnCreatures()
 	for creatureClass, creatureModel in pairs(activeCreatures) do
@@ -47,76 +70,116 @@ local function despawnCreatures()
 	end
 end
 
-local function despawnRequested(player, creatureType: string)
+local function despawnRequested(player, creature: string | Model)
 	local isGamekeeper, reason = CreatureSummoningService.isGamekeeper(player)
 	if not isGamekeeper then
 		warn(player, "is not the gamekeeper but attempted to despawn a creature! Possible exploit?")
 		return
 	end
 
-	print("Looking to despawn a", creatureType, "Active creatures:", activeCreatures)
+	print("Looking to despawn a", creature, "Active creatures:", activeCreatures)
+	local creatureModel: Model?, creatureClass: NPC? = getCreatureClass(creature)
 
 	-- Despawn the first creature found of the requested type
-	for creatureClass, creatureModel in pairs(activeCreatures) do
-		print(creatureModel.Name, creatureType, creatureModel.Name == creatureType)
-		if creatureModel.Name ~= creatureType then
-			continue
-		end
+	local success, result = pcall(function()
+		local moveTime = creatureClass:moveToPoint(targetSpawn.Position)
+		moveTime = math.clamp(moveTime, 0, MAX_DESPAWN_TIME)
+		creatureClass.despawning = true
+		-- Wait until the creature reaches the spawn position / briefcase, then despawn
+		task.wait(moveTime + 0.5) -- Wait until the creature reaches the briefcase
+		creatureClass:despawn()
+		activeCreatures[creatureClass] = nil
+	end)
 
-		if creatureClass.despawning then
-			continue
-		end
-
-		local success, result = pcall(function()
-			local moveTime = creatureClass:moveToPoint(targetSpawn.Position)
-			moveTime = math.clamp(moveTime, 0, MAX_DESPAWN_TIME)
-			creatureClass.despawning = true
-			-- Wait until the creature reaches the spawn position / briefcase, then despawn
-			task.wait(moveTime + 0.5) -- Wait until the creature reaches the briefcase
-			creatureClass:despawn()
-			activeCreatures[creatureClass] = nil
-		end)
-
-		if not success then
-			warn("Error while attempting to despawn creature class:", result)
-			creatureModel:Destroy()
-			activeCreatures[creatureClass] = nil
-		end
-
-		print("Final active creatures:", activeCreatures)
-		break
+	if not success then
+		warn("Error while attempting to despawn creature class:", result)
+		creatureModel:Destroy()
+		activeCreatures[creatureClass] = nil
 	end
+
+	print("Final active creatures:", activeCreatures)
 end
 
 local function summonRequested(player, creatureType: string)
 	local canSummon, reason = CreatureSummoningService.canSummonCreature(player, creatureType, creaturesList)
-	if canSummon then
-		local creatureModelTemplate = creatures:FindFirstChild(creatureType)
-		if not creatureModelTemplate then
-			warn("Failed to get a creature model for creatureType:", creatureType)
-			return
-		end
-		local creature = CreatureModule.spawn(creatureModelTemplate, summonedCreaturesFolder, targetSpawn.CFrame, true, true)
-		activeCreatures[creature] = creature.model -- Store reference to the creature class and model
-
-		task.wait(MOVEMENT_DELAY)
-
-		-- Placeholder roaming behavior
-		for i = 1, 1000 do
-			if not creature:canMove() or creature.despawning then
-				break
-			end
-			local targetRoamArea = creatureType == "Pixie" and workspace.PixieRoamArea or creatureZone
-			local t = creature:roam(targetRoamArea)
-			task.wait(t)
-		end
-	else
-		warn("Unable to summon", creatureType, "Reason:", reason)
-		if reason and MessageModule then
+	if not canSummon then
+		warn("Unable to summon", creatureType, reason)
+		if MessageModule then
 			MessageModule.sendWarning(player, reason)
 		end
+		return
+	end
+
+	local creatureModelTemplate = creatures:FindFirstChild(creatureType)
+	if not creatureModelTemplate then
+		warn("Failed to get a creature model for creatureType:", creatureType)
+		return
+	end
+
+	local creature =
+		CreatureModule.spawn(creatureModelTemplate, summonedCreaturesFolder, targetSpawn.CFrame, true, true)
+	activeCreatures[creature] = creature.model
+
+	creature:startRoaming()
+end
+
+----------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------ Creature Management Functions ----------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------
+
+-- This is not ideal but it's serviceable for now. Make sure to update this along with the table in LeashHandler.client.luau
+-- Despawn command is not applicable here, as the despawn command runs the separate despawning functionality
+local function isValidCommand(command): boolean
+	return command == "Stay" or command == "Roam" or command == "Follow"
+end
+
+local function creatureActionRequested(
+	player: Player,
+	command: string,
+	creatureModel: Model,
+	target: (Model | Vector3)?
+)
+	if not isValidCommand then
+		warn("Invalid command requested. Possible exploit? Player:", player, player.UserId, command)
+		return
+	end
+
+	local isGamekeeper, _ = CreatureSummoningService.isGamekeeper(player, true)
+	if not isGamekeeper then
+		warn(
+			"Attempted to send command to a creature, but the player isn't the gamekeeper. Possible exploit? Player:",
+			player,
+			player.UserId
+		)
+		return
+	end
+
+	if not creatureModel or typeof(creatureModel) ~= "Instance" or not creatureModel:IsA("Model") then
+		warn("Invalid creature requested. Possible exploit? Player:", player, player.UserId, creatureModel)
+		return
+	end
+
+	local _, creatureClass = getCreatureClass(creatureModel)
+	if not creatureClass then
+		warn("CreatureSummonSystem | Action requested, but failed to get creature class.", command, creatureModel)
+	end
+
+	print(creatureClass)
+
+	creatureClass:stopMoving() -- Stop any active movement behavior
+	if command == "Stay" then
+		creatureClass:stopMoving()
+	elseif command == "Roam" then
+		creatureClass:startRoaming()
+	elseif command == "Follow" then
+		local playerChar: Model? = player.Character
+		creatureClass:followTarget(playerChar)
 	end
 end
+
+----------------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------ Suitcase & Setup Functions ------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------
 
 local function addLeashTool(player: Player)
 	local backpack = player:FindFirstChildOfClass("Backpack")
@@ -145,7 +208,7 @@ local function suitcaseTriggered(player)
 	if isGamekeeper then
 		print(creaturesList)
 		summonBriefcase.Sparkles:Emit(10)
-		creatureSummonEvents.SummonCreature:FireClient(player, creaturesList)
+		creatureEvents.SummonCreature:FireClient(player, creaturesList)
 		addLeashTool(player)
 	else
 		warn("Only the Care of Magical Creatures instructor can use this.")
@@ -173,7 +236,13 @@ local function setupCreature(creature: Model)
 	-- Ensure all sounds are parented to a BasePart or Attachment
 	for _, sound in ipairs(creature:GetDescendants()) do
 		if sound:IsA("Sound") and not sound.Parent:IsA("BasePart") and not sound.Parent:IsA("Attachment") then
-			warn("Sound", sound.Name, "in creature", creature.Name, "is not parented to a BasePart or Attachment. This may cause issues.")
+			warn(
+				"Sound",
+				sound.Name,
+				"in creature",
+				creature.Name,
+				"is not parented to a BasePart or Attachment. This may cause issues."
+			)
 		end
 	end
 
@@ -191,7 +260,7 @@ local function setupCreature(creature: Model)
 	end
 
 	-- Setup collision group for the creature to avoid self-collisions
-	local selfCollisions: boolean | nil = creature:FindFirstChild("SelfCollisions") and creature.SelfCollisions.Value
+	local selfCollisions: boolean? = creature:FindFirstChild("SelfCollisions") and creature.SelfCollisions.Value
 	if not selfCollisions then
 		PhysicsService:RegisterCollisionGroup(creatureName)
 		PhysicsService:CollisionGroupSetCollidable(creatureName, creatureName, false)
@@ -210,13 +279,13 @@ local function setupCreature(creature: Model)
 	end
 end
 
-
 --- // MAIN
 
 for _, creature in ipairs(creatures:GetChildren()) do
 	setupCreature(creature)
 end
 
-creatureSummonEvents.SummonCreature.OnServerEvent:Connect(summonRequested)
-creatureSummonEvents.RemoveCreature.OnServerEvent:Connect(despawnRequested)
+manageCreatureEvent.OnServerEvent:Connect(creatureActionRequested)
+creatureEvents.SummonCreature.OnServerEvent:Connect(summonRequested)
+creatureEvents.RemoveCreature.OnServerEvent:Connect(despawnRequested)
 summonBriefcase.ProximityPrompt.Triggered:Connect(suitcaseTriggered)

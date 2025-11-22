@@ -125,9 +125,11 @@ end
 local function toggleCreatureManagementFrame(enabled: boolean)
 	local summonUI = localPlayer:WaitForChild("PlayerGui"):FindFirstChild("CreatureSummonUI") :: ScreenGui?
 	local managementFrame = summonUI and summonUI:FindFirstChild("CreatureManagementFrame") :: Frame?
+	local targetCreature: ObjectValue = summonUI and summonUI:FindFirstChild("TargetCreature")
 	if managementFrame then
 		managementFrame.Visible = enabled
 		summonUI.Enabled = true
+		targetCreature.Value = enabled and interactionHighlight.Adornee or nil
 	else
 		warn("Creature management frame not found:", summonUI, managementFrame)
 	end
