@@ -167,7 +167,7 @@ end
 character.ChildAdded:Connect(function(child)
 	if child:IsA("Tool") and (child:GetAttribute("FeedingTool") == true or child.Name == leashToolName) then
 		print("Creature interaction tool equipped")
-		highlightConnect = RunService.RenderStepped:Connect(function()
+		highlightConnect = RunService.Heartbeat:Connect(function()
 			local foundCreature = highlightCreature()
 			toggleCreatureManagementFrame(foundCreature)
 		end)

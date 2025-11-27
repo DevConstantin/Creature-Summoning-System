@@ -1,3 +1,5 @@
+-- This script handles all NPC creature functionality. It is still WIP and could be improved/refactored, but it works for the game.
+
 local NPC = {}
 NPC.__index = NPC
 
@@ -24,6 +26,7 @@ local SUMMON_SPARKLE_AMOUNT = 10
 local MOVEMENT_DELAY = 3 -- Related to sparkle life length
 local SPAWN_OFFSET = 3
 local HEARTS_FX_TEMPLATE = ReplicatedStorage.Assets.Particles.HeartsFX
+local DISTANCE_FACTOR_DEFAULT = 3.3
 
 local visibilityTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.In) -- Used by spawn/despawn
 
@@ -34,6 +37,13 @@ local eatingSoundIDs = {
 	"rbxassetid://80466416349727",
 	"rbxassetid://118489094475896",
 	"rbxassetid://71939000067014",
+}
+
+-- Used to check if a creature is in proximity to a pathfinding node, accounting for different creature values
+-- Falls back to DISTANCE_FACTOR_DEFAULT
+local distanceFactor = {
+	["Dementor"] = 7.2,
+	["Hippogriff"] = 10,
 }
 
 --- // TYPES
@@ -276,36 +286,6 @@ function NPC.spawn(
 				end
 			end)
 		)
-
-		-- Run aggression functionality
-		-- Currently DISABLED, as this is not optimized
-		-- if  then
-		-- 	local aggroConnect = nil
-		-- 	local cooldown = false
-
-		-- 	local speedT, speedInterval = 0, 1.7
-
-		-- 	aggroConnect = RunService.Stepped:Connect(function(dt)
-		-- 		if cooldown then
-		-- 			return
-		-- 		end
-		-- 		local destinationEta = self:moveToNearbyTarget(Vector3.new(56.783, 26.334, -24.727))
-		-- 		--if destinationEta then
-		-- 		--	cooldown = true
-		-- 		--	task.wait(destinationEta)
-		-- 		--	cooldown = false
-		-- 		--end
-
-		-- 		if (os.clock() - speedT) < speedInterval then
-		-- 			return
-		-- 		end
-		-- 		speedT = os.clock()
-		-- 		self:updateSpeed(math.random(self.speedMin, self.speedMax))
-		-- 	end)
-
-		-- 	table.insert(self.connections, aggroConnect)
-		-- end
-
 		return self
 	end)
 
@@ -509,17 +489,28 @@ function NPC:moveToPoint(pos: Vector3): number?
 		return nil
 	end
 
+	-- If a move thread is already running, cancel it
+	if self._currentMoveThread then
+		task.cancel(self._currentMoveThread)
+		self._currentMoveThread = nil
+	end
+	
+	-- Disconnect MoveToFinished event if it's still hanging around (see below)
+	if self._moveConnection then
+		self._moveConnection:Disconnect()
+		self._moveConnection = nil
+	end
+
 	if not pos then
 		warn("Creature.luau | Missing pos value for moveTo function.")
 		return nil
 	end
 
 	self.targetDestination = pos
-	local targetDestination = pos
 	local currentPos = self:getPosition()
 	local speed = self:getSpeed()
+
 	if speed <= 0 then
-		warn("Creature.luau |", self.creatureName, "has 0 speed! Cannot move.")
 		return nil
 	end
 
@@ -529,47 +520,46 @@ function NPC:moveToPoint(pos: Vector3): number?
 		return (currentPos and (pos - currentPos).Magnitude / speed) -- Basic travel distance estimation
 	end
 
-	-- Handle ground movement with pathfinding
 	local pathWaypoints = Pathfinding:GetWaypoints(self.creatureName, currentPos, pos)
-
-	-- Fallback: If pathfinding fails, move directly to the point
-	if not pathWaypoints or #pathWaypoints == 0 then
+	if not pathWaypoints or #pathWaypoints == 0 then 	-- Fallback logic
 		warn("Creature.luau | Failed to get path waypoints for", self.creatureName, "from", currentPos, "to", pos)
 		self.humanoid:MoveTo(pos)
 		local travelTime = currentPos and (pos - currentPos).Magnitude / speed
-		--print("Moving", self.creatureName, "to", pos, "from", currentPos, "Travel time:", travelTime)
 		return travelTime
 	end
 
-	task.spawn(function()
+	-- Save the new thread into the variable so we can kill it next time
+	self._currentMoveThread = task.spawn(function()
 		for num, waypoint in ipairs(pathWaypoints) do
-			if not self:canMove() or targetDestination ~= self.targetDestination then
-				break
-			end
 			self.humanoid:MoveTo(waypoint.Position)
-			--print("Moving to waypoint ", num, "at", waypoint.Position, "for", self.creatureName)
 
-			-- Frankly this is a mess, but MoveToFinished is choppy resulting in stuttered movement
-			-- Also this should ideally be on the client
 			local moveToFinished = false
-			local listenConn
-			listenConn = self.humanoid.MoveToFinished:connect(function()
-				listenConn:Disconnect()
+		
+			-- Keep track of when the humanoid finishes moving to the destination
+			self._moveConnection = self.humanoid.MoveToFinished:Connect(function()
 				moveToFinished = true
+				if self._moveConnection then
+					self._moveConnection:Disconnect()
+					self._moveConnection = nil
+				end
 			end)
 
 			while moveToFinished == false do
 				local wpDistance = (self.humanoidRootPart.Position - waypoint.Position).Magnitude
-				local distFactor = self.creatureName == "Dementor" and 7.2
-					or self.creatureName == "Hippogriff" and 10
-					or 3.3 -- Dementors are tall and need more distance. This is hacky but works for now. It will need to be expanded/adjusted if more tall creatures are added
+				local distFactor = distanceFactor[self.creatureName] or DISTANCE_FACTOR_DEFAULT
+
 				if wpDistance <= distFactor then
-					listenConn:Disconnect()
+					if self._moveConnection then
+						self._moveConnection:Disconnect()
+						self._moveConnection = nil
+					end
 					break
 				end
 				RunService.Heartbeat:Wait()
 			end
 		end
+	
+		self._currentMoveThread = nil
 	end)
 
 	local travelDistance = 0

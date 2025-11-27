@@ -36,30 +36,26 @@ type NPC = CreatureModule.NPC
 
 -- Helper function to get a creature class from the creature model or creature name
 local function getCreatureClass(creature: Model | string): (Model?, NPC?)
-	local creatureModel: Model? = typeof(creature) ~= "string" and creature or nil -- Set the creature model variable to the paramater, if a non-string was sent in
-	local creatureClass: NPC
-	for _creatureClass, _creatureModel in pairs(activeCreatures) do
-		if _creatureClass.despawning then
-			return
-		end
+	if typeof(creature) == "string" then -- Try to get the first creature with this name
+		for creatureModel: Model, creatureClass: NPC in pairs(activeCreatures) do
+			if creatureClass.despawning then
+				continue
+			end
 
-		if typeof(creature) == "string" and _creatureModel.Name == creature then
-			creatureClass = _creatureClass
-			creatureModel = _creatureModel
-			break
-		elseif _creatureModel == creature then
-			creatureClass = _creatureClass
-			break
+			if creatureClass.creatureName == creature then
+				return creatureModel, creatureClass
+			end
 		end
+	else
+		return creature, activeCreatures[creature]
 	end
-	return creatureModel, creatureClass
 end
 ------------------------------------------------------------------------------------------------------------------------------------------
 ------------------------------------------------------------ Summon Functions ------------------------------------------------------------
 ------------------------------------------------------------------------------------------------------------------------------------------
 -- Function to despawn all creatures
 local function despawnCreatures()
-	for creatureClass, creatureModel in pairs(activeCreatures) do
+	for creatureModel: Model, creatureClass: NPC in pairs(activeCreatures) do
 		local success, result = pcall(function()
 			creatureClass:despawn()
 		end)
@@ -88,13 +84,13 @@ local function despawnRequested(player, creature: string | Model)
 		-- Wait until the creature reaches the spawn position / briefcase, then despawn
 		task.wait(moveTime + 0.5) -- Wait until the creature reaches the briefcase
 		creatureClass:despawn()
-		activeCreatures[creatureClass] = nil
+		activeCreatures[creatureModel] = nil
 	end)
 
 	if not success then
 		warn("Error while attempting to despawn creature class:", result)
 		creatureModel:Destroy()
-		activeCreatures[creatureClass] = nil
+		activeCreatures[creatureModel] = nil
 	end
 
 	print("Final active creatures:", activeCreatures)
@@ -118,7 +114,7 @@ local function summonRequested(player, creatureType: string)
 
 	local creature =
 		CreatureModule.spawn(creatureModelTemplate, summonedCreaturesFolder, targetSpawn.CFrame, true, true)
-	activeCreatures[creature] = creature.model
+	activeCreatures[creature.model] = creature
 
 	creature:startRoaming()
 end
@@ -127,7 +123,7 @@ end
 ------------------------------------------------------------ Creature Management Functions ----------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------------------------
 
--- This is not ideal but it's serviceable for now. Make sure to update this along with the table in LeashHandler.client.luau
+-- This is not ideal but it's serviceable with a small number of commands. Make sure to update this along with the table in LeashHandler.client.luau
 -- Despawn command is not applicable here, as the despawn command runs the separate despawning functionality
 local function isValidCommand(command): boolean
 	return command == "Stay" or command == "Roam" or command == "Follow"
@@ -139,18 +135,15 @@ local function creatureActionRequested(
 	creatureModel: Model,
 	target: (Model | Vector3)?
 )
-	if not isValidCommand then
+	if not isValidCommand(command) then
 		warn("Invalid command requested. Possible exploit? Player:", player, player.UserId, command)
 		return
 	end
 
+	-- It's possible that the player will have a leash item without being the gamekeeper
 	local isGamekeeper, _ = CreatureSummoningService.isGamekeeper(player, true)
 	if not isGamekeeper then
-		warn(
-			"Attempted to send command to a creature, but the player isn't the gamekeeper. Possible exploit? Player:",
-			player,
-			player.UserId
-		)
+		MessageModule.sendWarning("Only the gamekeeper can interact with these creatures!")
 		return
 	end
 
