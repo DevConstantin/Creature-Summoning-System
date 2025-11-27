@@ -34,6 +34,27 @@ type NPC = CreatureModule.NPC
 
 --- // FUNCTIONS
 
+local function addLeashTool(player: Player)
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if not backpack then
+		warn("Failed to find backpack for player:", player.Name)
+		return
+	end
+
+	if backpack:FindFirstChild("Leash") or player.Character:FindFirstChild("Leash") then
+		-- Player already has a leash tool
+		return
+	end
+
+	if not leashTemplate then
+		warn("Leash tool template not found in ServerStorage.Tools")
+		return
+	end
+
+	local leashTool = leashTemplate:Clone()
+	leashTool.Parent = backpack
+end
+
 -- Helper function to get a creature class from the creature model or creature name
 local function getCreatureClass(creature: Model | string): (Model?, NPC?)
 	if typeof(creature) == "string" then -- Try to get the first creature with this name
@@ -97,6 +118,7 @@ local function despawnRequested(player, creature: string | Model)
 end
 
 local function summonRequested(player, creatureType: string)
+	-- Ensure the creature can be summoned
 	local canSummon, reason = CreatureSummoningService.canSummonCreature(player, creatureType, creaturesList)
 	if not canSummon then
 		warn("Unable to summon", creatureType, reason)
@@ -112,11 +134,15 @@ local function summonRequested(player, creatureType: string)
 		return
 	end
 
+	-- Spawn creature
 	local creature =
 		CreatureModule.spawn(creatureModelTemplate, summonedCreaturesFolder, targetSpawn.CFrame, true, true)
 	activeCreatures[creature.model] = creature
 
 	creature:startRoaming()
+
+	-- Give player the leash, if they don't have one
+	addLeashTool(player)
 end
 
 ----------------------------------------------------------------------------------------------------------------------------------------------------
@@ -174,27 +200,6 @@ end
 ------------------------------------------------------------ Suitcase & Setup Functions ------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------------------------
 
-local function addLeashTool(player: Player)
-	local backpack = player:FindFirstChildOfClass("Backpack")
-	if not backpack then
-		warn("Failed to find backpack for player:", player.Name)
-		return
-	end
-
-	if backpack:FindFirstChild("Leash") or player.Character:FindFirstChild("Leash") then
-		-- Player already has a leash tool
-		return
-	end
-
-	if not leashTemplate then
-		warn("Leash tool template not found in ServerStorage.Tools")
-		return
-	end
-
-	local leashTool = leashTemplate:Clone()
-	leashTool.Parent = backpack
-end
-
 -- Open creature summon GUI for the player, if they are the gamekeeper
 local function suitcaseTriggered(player)
 	local isGamekeeper, _ = CreatureSummoningService.isGamekeeper(player, true)
@@ -202,7 +207,6 @@ local function suitcaseTriggered(player)
 		print(creaturesList)
 		summonBriefcase.Sparkles:Emit(10)
 		creatureEvents.SummonCreature:FireClient(player, creaturesList)
-		addLeashTool(player)
 	else
 		warn("Only the Care of Magical Creatures instructor can use this.")
 		if MessageModule then

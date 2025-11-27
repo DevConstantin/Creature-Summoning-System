@@ -5,20 +5,29 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 --- // OBJECTS
 local CreatureSummoningService = require(ReplicatedStorage.RSModules.CreatureSummoningService)
 local localPlayer: Player = Players.LocalPlayer
+
 -- UI objects
 local managementFrame: Frame = script.Parent.CreatureManagementFrame
 local creatureSelectionFrame: Frame = managementFrame.CreatureSelectionFrame
+local titleLabel: TextLabel = managementFrame.Title
 local buttonTemplate: TextButton = managementFrame.ManagementButtonTemplate
 local targetCreature: ObjectValue = script.Parent.TargetCreature -- ObjectValue to keep track of the creature (model) we want to interact with. This value is updated within FeedingHandler player script, which handles creature rendering
+
 -- Remote events
 local creatureEvents = ReplicatedStorage.RemoteEvents.CreatureSummonSystem
 local manageCreatureEvent: RemoteEvent = creatureEvents.ManageCreatureEvent
 local despawnCreatureEvent: RemoteEvent = creatureEvents.RemoveCreature
 
+-- Sounds
+local uiSounds = game:GetService("SoundService"):WaitForChild("UI_Sounds")
+local clickSound = uiSounds:WaitForChild("RBLX UI Hover 02 (SFX)")
+local hoverSound = uiSounds:WaitForChild("RBLX UI Hover 03 (SFX)")
+local confirmSound = uiSounds:WaitForChild("RBLX UI Back (SFX)")
+
 --[[
     Adding New Commands
     1. Add new command to the table below. Add a 'valid command' check in CreatureSummonSystem.server.luau
-    2. Add command check under initializeButton
+    2. Add command check under initializeButton function
     3. Account for command in creatureActionRequested (CreatureSummonSystem.server.luau)
     4. Ensure the creature handles the command correctly
 ]]
@@ -47,6 +56,8 @@ local function initializeButton(command: string)
     button.Visible = true
 
     button.MouseButton1Click:Connect(function()
+        clickSound:Play()
+
         local targetCreatureModel: Model? = targetCreature.Value
         if targetCreatureModel == nil then
             return
@@ -71,6 +82,13 @@ local function initializeButton(command: string)
 
     button.Parent = creatureSelectionFrame
 end
+
+local function updateTitle()
+    local targetCreature: Instance? = targetCreature.Value
+    titleLabel.Text = targetCreature and targetCreature.Name or "Manage Creature" -- Fallback to "Manage Creature" if no target.
+end
+
+targetCreature:GetPropertyChangedSignal("Value"):Connect(updateTitle)
 
 --- // MAIN
 for _, command in ipairs(commands) do
