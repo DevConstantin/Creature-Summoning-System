@@ -1,6 +1,5 @@
 -- This module handles creature interaction logic on the client side
--- It tracks when the player equips food items, highlights feedable creatures (if any are nearby), and fires server events to feed them
--- It also handles using a leash tool to interact with creatures, using the same highlight and interaction logic
+-- It tracks when the player equips food items / leash, highlights nearby creatures, and fires server events to feed or manage them
 -- IMPORTANT: To mark a tool as a feeding tool, set a "FeedingTool" bool attribute to true on the tool instance
 
 --- // SERVICES
