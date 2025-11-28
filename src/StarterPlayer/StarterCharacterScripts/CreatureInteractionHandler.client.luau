@@ -19,11 +19,13 @@ local feedEvent: RemoteEvent = ReplicatedStorage.RemoteEvents.CreatureSummonSyst
 local config = ReplicatedStorage.Configurations.CreatureSystemsConfig
 local leashToolName = "Leash"
 local INTERACT_RANGE_DEFAULT = config:GetAttribute("InteractRange") or 10 -- Distance within which a creature can be fed
+local SCAN_INTERVAL = 0.1
 
 --- // VARIABLES
 local interactionHighlight: Highlight? = nil -- Store the highlight instance, reused for efficiency
 local highlightConnect = nil
 local inputConnect = nil
+local t = 0
 
 --- // FUNCTIONS
 -------------------- Highlight Instance Management --------------------
@@ -125,7 +127,7 @@ local function toggleCreatureManagementFrame(enabled: boolean)
 	local summonUI = localPlayer:WaitForChild("PlayerGui"):FindFirstChild("CreatureSummonUI") :: ScreenGui?
 	local managementFrame = summonUI and summonUI:FindFirstChild("CreatureManagementFrame") :: Frame?
 	local targetCreature: ObjectValue = summonUI and summonUI:FindFirstChild("TargetCreature")
-	if managementFrame then
+	if managementFrame and targetCreature then
 		managementFrame.Visible = enabled
 		summonUI.Enabled = true
 		targetCreature.Value = enabled and interactionHighlight.Adornee or nil
@@ -167,8 +169,13 @@ character.ChildAdded:Connect(function(child)
 	if child:IsA("Tool") and (child:GetAttribute("FeedingTool") == true or child.Name == leashToolName) then
 		print("Creature interaction tool equipped")
 		highlightConnect = RunService.Heartbeat:Connect(function()
+			if (os.clock() - t) < SCAN_INTERVAL then
+				return
+			end
+			t = os.clock()
+
 			local foundCreature = highlightCreature()
-			toggleCreatureManagementFrame(foundCreature)
+			toggleCreatureManagementFrame(foundCreature and getLeashTool())
 		end)
 		inputConnect = UserInputService.InputBegan:Connect(interactWithCreature)		-- Listen for input to feed creatures
 	end

@@ -534,7 +534,7 @@ function NPC:moveToPoint(pos: Vector3): number?
 			self.humanoid:MoveTo(waypoint.Position)
 
 			local moveToFinished = false
-		
+	
 			-- Keep track of when the humanoid finishes moving to the destination
 			self._moveConnection = self.humanoid.MoveToFinished:Connect(function()
 				moveToFinished = true
@@ -576,6 +576,19 @@ function NPC:stopMoving()
 	self.isRoaming = false
 	self.trackTarget = nil
 	self.targetDestination = nil -- If changed/set to nil, will stop the current movement
+
+	-- Cancel following behavior
+	if self._currentFollowThread then
+		task.cancel(self._currentFollowThread)
+		self._currentFollowThread = nil
+	end
+
+	-- Cancel current movement behavior
+	if self._currentMoveThread then
+		task.cancel(self._currentMoveThread)
+		self._currentMoveThread = nil
+	end
+
 	self.humanoid:MoveTo(self.humanoidRootPart.Position) -- Override active MoveTo
 end
 
@@ -664,18 +677,18 @@ function NPC:followTarget(target: Model?): boolean
 	if target == self.trackTarget then
 		return
 	end
+
 	local targetHumrp = target:FindFirstChild("HumanoidRootPart")
 	if not targetHumrp then
 		return false
 	end
 
 	self.trackTarget = target
-	print(not self.despawning and self.trackTarget and self.trackTarget.Parent)
-	task.spawn(function()
+
+	self._currentFollowThread = task.spawn(function()
 		task.wait(1) -- Small movement delay
 
 		while not self.despawning and self.trackTarget and self.trackTarget == target and self.trackTarget.Parent do
-			print(self:canMove())
 			if not self:canMove() then
 				-- Wait a bit before checking again to prevent crashing
 				task.wait(0.5)
@@ -684,7 +697,6 @@ function NPC:followTarget(target: Model?): boolean
 
 			-- If target is already in proximity, don't move anywhere
 			local targetPos: Vector3 = targetHumrp.Position
-			print(self:inProximity(targetPos, 12))
 			if self:inProximity(targetPos, 12) then
 				task.wait(0.5)
 				continue
@@ -696,12 +708,10 @@ function NPC:followTarget(target: Model?): boolean
 			local offsetPos: Vector3 = targetPos + Vector3.new(math.random(-offset, offset), yOffset, math.random(-offset, offset))
 
 			local moveDuration = self:moveToPoint(offsetPos)
-			if moveDuration then
-				task.wait(moveDuration)
-			else
-				task.wait(1)
+			if not moveDuration then
 				warn("Failed to get move duration from self:roamToPoint!")
 			end
+			task.wait(1)
 		end
 	end)
 end
